@@ -332,13 +332,13 @@ if data_source == "📡 Live Feed":
 elif data_source == "📝 Manual Entry":
     st.sidebar.markdown("### Manual Inputs")
     irradiance = st.sidebar.slider(
-        "Irradiance (W/m²)", 0.0, 1200.0, 0.0, 10.0
+        "Irradiance (W/m²)", 0.0, 1200.0, 850.0, 10.0
     )
-    temp = st.sidebar.slider("Panel Temp (°C)", 0.0, 80.0, 25.0, 1.0)
-    ac_curr = st.sidebar.slider("AC Current (A)", 0.0, 30.0, 0.0, 0.1)
-    dc_curr = st.sidebar.slider("DC Current (A)", 0.0, 30.0, 0.0, 0.1)
-    ac_volt = st.sidebar.slider("AC Voltage (V)", 0.0, 400.0, 0.0, 1.0)
-    dc_volt = st.sidebar.slider("DC Voltage (V)", 0.0, 600.0, 0.0, 1.0)
+    temp = st.sidebar.slider("Panel Temp (°C)", 0.0, 80.0, 42.0, 1.0)
+    ac_curr = st.sidebar.slider("AC Current (A)", 0.0, 30.0, 14.3, 0.1)
+    dc_curr = st.sidebar.slider("DC Current (A)", 0.0, 30.0, 9.2, 0.1)
+    ac_volt = st.sidebar.slider("AC Voltage (V)", 0.0, 400.0, 230.0, 1.0)
+    dc_volt = st.sidebar.slider("DC Voltage (V)", 0.0, 600.0, 375.0, 1.0)
 
 else:  # Upload CSV
     st.sidebar.markdown("### Upload Dataset")
@@ -355,17 +355,17 @@ else:  # Upload CSV
             1,
         )
         row = df_uploaded.iloc[row_idx]
-        irradiance = row.get("irradiance", 0.0)
-        temp = row.get("module_temp", 25.0)
-        ac_curr = row.get("ac_current", 0.0)
-        dc_curr = row.get("dc_current", 0.0)
-        ac_volt = row.get("ac_voltage", 0.0)
-        dc_volt = row.get("dc_voltage", 0.0)
+        irradiance = row.get("irradiance", 850.0)
+        temp = row.get("module_temp", 42.0)
+        ac_curr = row.get("ac_current", 14.3)
+        dc_curr = row.get("dc_current", 9.2)
+        ac_volt = row.get("ac_voltage", 230.0)
+        dc_volt = row.get("dc_voltage", 375.0)
     else:
         st.sidebar.info("الرجاء رفع ملف CSV للبدء.")
-        ac_curr, dc_curr = 0.0, 0.0
-        ac_volt, dc_volt = 0.0, 0.0
-        irradiance, temp = 0.0, 25.0
+        ac_curr, dc_curr = 14.3, 9.2
+        ac_volt, dc_volt = 230.0, 375.0
+        irradiance, temp = 850.0, 42.0
 
 features_df = compute_features(
     datetime.now(), irradiance, temp, ac_curr, dc_curr, ac_volt, dc_volt
@@ -373,8 +373,44 @@ features_df = compute_features(
 active_power = features_df["active_power"].values[0]
 
 # ==========================================
-# 4. Sequential Execution (مع التحقق من حالة الليل)
+# 4. Sequential Execution (مع قاموس الحلول الذكية)
 # ==========================================
+
+# قاموس الحلول المناسبة حسب نوع العطل (يمكنك تعديل أو إضافة أسماء الأعطال حسب مخرجات المودل عندك)
+fault_solutions = {
+    "shading": (
+        "Check for surrounding physical obstructions, tree branches, or debris"
+        " casting shadows on the PV strings."
+    ),
+    "dust": (
+        "Schedule a panel surface cleaning to remove dust and dirt accumulation"
+        " reducing efficiency."
+    ),
+    "soiling": (
+        "Clean panel surfaces immediately to remove bird droppings or heavy"
+        " particulate layers."
+    ),
+    "inverter failure": (
+        "Inspect inverter error codes, verify grid synchronization, and check"
+        " AC/DC circuit breakers."
+    ),
+    "string disconnect": (
+        "Inspect DC wiring, junction box connectors, and string fuses for loose"
+        " or broken paths."
+    ),
+    "open circuit": (
+        "Check string cables and terminal blocks for accidental disconnection or"
+        " physical damage."
+    ),
+    "short circuit": (
+        "Shut down the system immediately to prevent fire hazards; inspect"
+        " damaged cables or faulty diodes."
+    ),
+    "temperature anomaly": (
+        "Check inverter cooling fans, ventilation paths, and ambient airflow to"
+        " prevent overheating."
+    ),
+}
 
 if irradiance <= 0.0:
     # حالة الليل (Night Time)
@@ -432,8 +468,11 @@ else:
     else:
         status, status_color = "Fault Detected", "#ef4444"
         fault_label = raw_type_pred.title()
-        action = (
-            "Perform preventive system maintenance based on detected anomalies."
+        # اختيار الحل المناسب تلقائياً من القاموس بناءً على اسم العطل، ولو مش موجود يدي حل عام دقيق
+        action = fault_solutions.get(
+            raw_type_pred,
+            "Perform a comprehensive on-site inspection of the PV strings, check"
+            " electrical connections, and review inverter status.",
         )
 
 efficiency = features_df["inverter_efficiency"].values[0]
@@ -477,7 +516,7 @@ st.markdown(
         <div class="diag-header">System Diagnostics (4-Stage ML Output)</div>
         <div class="diag-fault" style="color: {status_color};">{fault_label}</div>
         <div class="diag-action-box">
-            <div class="diag-action-title">Recommended Action / Recommendation</div>
+            <div class="diag-action-title">Recommended Action / Solution</div>
             <div class="diag-action-text">{action}</div>
         </div>
     </div>
