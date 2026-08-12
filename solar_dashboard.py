@@ -211,15 +211,12 @@ def compute_features_from_row(row):
     day_of_week = dt.dayofweek
 
     irradiance = float(row.get("irradiance", 0.0))
-    temp = float(
-        row.get("module_temp", row.get("temp", 25.0))
-    )
+    temp = float(row.get("module_temp", row.get("temp", 25.0)))
     ac_curr = float(row.get("ac_current", 0.0))
     dc_curr = float(row.get("dc_current", 0.0))
     ac_volt = float(row.get("ac_voltage", 0.0))
     dc_volt = float(row.get("dc_voltage", 0.0))
 
-    # حراسة منطقية لمنع الأعطال الوهمية ليلاً أو عند انعدام الإشعاع
     is_daylight = 1 if irradiance > 15.0 else 0
     if is_daylight == 0:
         irradiance = 0.0
@@ -380,10 +377,10 @@ else:
     )
     if uploaded_file is not None:
         df_uploaded = pd.read_csv(uploaded_file)
+        play_stream = st.sidebar.checkbox(
+            "▶ Play Timeline Minute-by-Minute", value=False
+        )
 
-        # زر تشغيل القراءة دقيقة بدقيقة (Streaming Playback)
-        play_stream = st.sidebar.checkbox("▶ Play Timeline Minute-by-Minute", value=False)
-        
         if play_stream:
             row_idx = st.sidebar.slider(
                 "Playback Step", 0, len(df_uploaded) - 1, 0, 1
@@ -392,7 +389,7 @@ else:
             row_idx = st.sidebar.slider(
                 "Select Row Index", 0, len(df_uploaded) - 1, 0, 1
             )
-            
+
         row_data = df_uploaded.iloc[row_idx].to_dict()
     else:
         st.sidebar.info("الرجاء رفع ملف CSV لعرض البيانات.")
@@ -618,7 +615,6 @@ if df_uploaded is not None and (
     )
     df_chart_full["Expected_Power"] = df_chart_full["Actual_Power"] * 1.05
 
-    # إذا كان خيار الـ Play مفعل، نقوم بقص الداتا حتى نقطة المؤشر (رسم تدريجي دقيقة بدقيقة)
     if locals().get("play_stream", False):
         df_plot_subset = df_chart_full.iloc[: row_idx + 1]
     else:
@@ -748,13 +744,11 @@ if df_uploaded is not None and (
         )
         st.plotly_chart(fig_bar, use_container_width=True, config=chart_config)
 
-    # إذا كان خيار الـ Play مفعل، نقوم بعمل ريفريش تلقائي لتحديث الخطوة بخطوة
     if locals().get("play_stream", False) and row_idx < len(df_uploaded) - 1:
         t_lib.sleep(0.3)
         st.rerun()
 
 else:
-    # رسومات افتراضية في حال عدم رفع ملف CSV
     time_series = pd.date_range(
         start=datetime.now().replace(hour=0, minute=0, second=0),
         periods=96,
@@ -865,7 +859,7 @@ else:
             )
         )
         fig_bar.update_layout(
-            template=plotly_temp := plotly_template,
+            template=plotly_template,
             paper_bgcolor=card_bg,
             plot_bgcolor=card_bg,
             barmode="group",
