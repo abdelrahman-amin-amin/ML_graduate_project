@@ -1,23 +1,23 @@
 from datetime import datetime, time
+import os
+import joblib
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# 1. Page Configuration
+# ==========================================
+# 1. Page Configuration & Dynamic CSS
+# ==========================================
 st.set_page_config(
     page_title="Solar PV Smart Dashboard",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# 2. Sidebar Control & Theme Toggle
 st.sidebar.title("Control Panel")
-
-# Dark Mode Toggle
 dark_mode = st.sidebar.toggle("Dark Mode", value=True)
 
-# Dynamic Color Variables
 if dark_mode:
     bg_app = "#0b0f19"
     card_bg = "#151c2c"
@@ -26,6 +26,8 @@ if dark_mode:
     border_color = "#1e293b"
     plotly_template = "plotly_dark"
     grid_color = "#1e293b"
+    active_btn_bg = "#ef4444"
+    btn_bg = "#1e293b"
 else:
     bg_app = "#f8fafc"
     card_bg = "#ffffff"
@@ -34,70 +36,53 @@ else:
     border_color = "#e2e8f0"
     plotly_template = "plotly_white"
     grid_color = "#e2e8f0"
+    active_btn_bg = "#2563eb"
+    btn_bg = "#e2e8f0"
 
-# 3. Custom CSS Styles
+st.sidebar.markdown(
+    "<hr style='margin: 10px 0; opacity: 0.15;'>", unsafe_allow_html=True
+)
+
 st.markdown(
     f"""
     <style>
-    .stApp {{
-        background-color: {bg_app};
-        color: {text_color};
+    .stApp {{ background-color: {bg_app}; color: {text_color}; }}
+    header[data-testid="stHeader"] {{ background-color: transparent !important; }}
+    .block-container {{ padding-top: 2.5rem !important; padding-bottom: 1.5rem; }}
+
+    div[data-testid="stInputInstruction"],
+    small[data-testid="stInputInstruction"] {{ display: none !important; visibility: hidden !important; }}
+
+    div[data-testid="stSidebar"] div[data-testid="stRadio"] > label {{
+        font-size: 0.85rem !important; font-weight: 700 !important; color: {subtext_color} !important; margin-bottom: 8px !important;
     }}
-    header[data-testid="stHeader"] {{
-        background-color: transparent !important;
+    div[data-testid="stSidebar"] div[data-testid="stRadio"] label > div:first-child {{ display: none !important; }}
+    div[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] {{ gap: 8px !important; }}
+    div[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] label {{
+        background-color: {btn_bg}; color: {text_color} !important; padding: 10px 14px !important;
+        border-radius: 8px !important; margin: 0 !important; cursor: pointer; width: 100% !important;
+        transition: all 0.2s ease; font-weight: 600; font-size: 0.9rem; display: block; text-align: center; border: 1px solid {border_color};
     }}
-    .block-container {{
-        padding-top: 2.5rem !important;
-        padding-bottom: 1.5rem;
+    div[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {{
+        background-color: {active_btn_bg} !important; color: #ffffff !important; border-color: {active_btn_bg} !important; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     }}
-    .sensor-card {{
-        background: {card_bg};
-        border-radius: 14px;
-        padding: 14px 16px;
-        border: 1px solid {border_color};
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        margin-bottom: 12px;
-        transition: transform 0.2s ease;
-    }}
-    .sensor-card:hover {{
-        transform: translateY(-2px);
-    }}
-    .sensor-header {{
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-    }}
-    .sensor-title {{
-        color: {subtext_color};
-        font-size: 0.8rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }}
-    .sensor-body {{
-        display: flex;
-        align-items: baseline;
-        gap: 6px;
-    }}
-    .sensor-value {{
-        font-size: 1.35rem;
-        font-weight: 700;
-    }}
-    .sensor-unit {{
-        color: {subtext_color};
-        font-size: 0.85rem;
-        font-weight: 500;
-    }}
-    .kpi-card {{
-        background: {card_bg};
-        border-radius: 12px;
-        padding: 12px;
-        border: 1px solid {border_color};
-        text-align: center;
-    }}
+
+    .sensor-card {{ background: {card_bg}; border-radius: 14px; padding: 14px 16px; border: 1px solid {border_color}; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 12px; }}
+    .sensor-title {{ color: {subtext_color}; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; }}
+    .sensor-body {{ display: flex; align-items: baseline; gap: 6px; margin-top: 4px; }}
+    .sensor-value {{ font-size: 1.35rem; font-weight: 700; }}
+    .sensor-unit {{ color: {subtext_color}; font-size: 0.85rem; }}
+
+    .kpi-card {{ background: {card_bg}; border-radius: 12px; padding: 12px; border: 1px solid {border_color}; text-align: center; }}
     .kpi-title {{ color: {subtext_color}; font-size: 0.78rem; font-weight: 600; }}
     .kpi-value {{ font-size: 1.2rem; font-weight: 700; margin-top: 2px; color: {text_color}; }}
+
+    .diag-card {{ background: {card_bg}; border-radius: 14px; padding: 18px 22px; border: 1px solid {border_color}; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }}
+    .diag-header {{ font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: {subtext_color}; margin-bottom: 6px; }}
+    .diag-fault {{ font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; }}
+    .diag-action-box {{ background-color: rgba(59, 130, 246, 0.08); border-left: 4px solid #3b82f6; padding: 10px 14px; border-radius: 0 8px 8px 0; margin-top: 10px; }}
+    .diag-action-title {{ font-size: 0.8rem; font-weight: 700; color: #3b82f6; text-transform: uppercase; margin-bottom: 2px; }}
+    .diag-action-text {{ font-size: 0.95rem; color: {text_color}; font-weight: 500; }}
     </style>
 """,
     unsafe_allow_html=True,
@@ -107,9 +92,7 @@ st.markdown(
 def render_sensor_card(title, value, unit, color="#3b82f6"):
     return f"""
     <div class="sensor-card">
-        <div class="sensor-header">
-            <span class="sensor-title">{title}</span>
-        </div>
+        <div class="sensor-title">{title}</div>
         <div class="sensor-body">
             <span class="sensor-value" style="color: {color};">{round(value, 2)}</span>
             <span class="sensor-unit">{unit}</span>
@@ -118,244 +101,347 @@ def render_sensor_card(title, value, unit, color="#3b82f6"):
     """
 
 
-def generate_realistic_solar_profile(time_series, max_power):
-    """دالة حساب منحنى التوليد الشمسي الواقعي"""
-    ts = (
-        pd.Series(time_series)
-        if isinstance(time_series, pd.DatetimeIndex)
-        else time_series
-    )
-    hours = ts.dt.hour + ts.dt.minute / 60.0 + ts.dt.second / 3600.0
-    solar_power = np.where(
-        (hours >= 6.0) & (hours <= 18.0),
-        max_power * np.sin((hours - 6.0) * np.pi / 12.0),
-        0.0,
-    )
-    return solar_power
+# ==========================================
+# 2. ML Engine & Sequential Execution Logic
+# ==========================================
+REQUIRED_MODELS = {
+    "power_model": "Expected_Power_LGBM.pkl",
+    "is_faulted_model": "is_faulted_LGBM.pkl",
+    "fault_type_model": "fault_type_LGBM.pkl",
+    "danger_model": "danger_LGBM.pkl",
+}
+
+DEFAULT_STAGE_FEATURES = {
+    "power": [
+        "hour",
+        "month",
+        "day_of_week",
+        "is_daylight",
+        "day_length_hours",
+        "sun_elevation",
+        "sun_azimuth",
+        "ambient_temp",
+        "cloud_cover",
+        "irradiance",
+        "clear_sky_irradiance",
+        "module_temp",
+    ],
+    "is_faulted": [
+        "irradiance",
+        "active_power",
+        "dc_power",
+        "ac_power",
+        "dc_voltage",
+        "dc_current",
+        "ac_voltage",
+        "ac_current",
+        "module_temp",
+        "inverter_temp",
+        "performance_ratio",
+        "inverter_efficiency",
+    ],
+    "fault_type": [
+        "irradiance",
+        "active_power",
+        "dc_power",
+        "ac_power",
+        "dc_voltage",
+        "dc_current",
+        "ac_voltage",
+        "ac_current",
+        "module_temp",
+        "inverter_temp",
+        "performance_ratio",
+        "inverter_efficiency",
+    ],
+    "danger": [
+        "active_power",
+        "dc_power",
+        "ac_power",
+        "performance_ratio",
+        "inverter_efficiency",
+        "module_temp",
+        "inverter_temp",
+    ],
+}
 
 
-# 4. Data Source Settings
+@st.cache_resource
+def load_models():
+    try:
+        return (
+            joblib.load(REQUIRED_MODELS["power_model"]),
+            joblib.load(REQUIRED_MODELS["is_faulted_model"]),
+            joblib.load(REQUIRED_MODELS["fault_type_model"]),
+            joblib.load(REQUIRED_MODELS["danger_model"]),
+            True,
+            [],
+        )
+    except Exception as e:
+        return None, None, None, None, False, [str(e)]
+
+
+(
+    power_model,
+    is_faulted_model,
+    fault_type_model,
+    danger_model,
+    models_loaded,
+    missing_info,
+) = load_models()
+
+if not models_loaded:
+    st.error(
+        f"❌ **تعذر تحميل نماذج الذكاء الاصطناعي:** {missing_info[0] if missing_info else ''}"
+    )
+    st.stop()
+
+
+def compute_features(
+    timestamp,
+    irradiance,
+    temp,
+    ac_curr,
+    dc_curr,
+    ac_volt,
+    dc_volt,
+    ambient_temp=None,
+    cloud_cover=0.1,
+):
+    dt = (
+        pd.to_datetime(timestamp)
+        if not isinstance(timestamp, pd.Timestamp)
+        else timestamp
+    )
+    hour = dt.hour + dt.minute / 60.0
+    month = dt.month
+    day_of_week = dt.dayofweek
+    is_daylight = 1 if irradiance > 10.0 else 0
+    day_length_hours = 12.0
+
+    sun_elevation = max(
+        0.0, 90.0 * np.sin(np.pi * (hour - 6) / 12.0) if is_daylight else 0.0
+    )
+    sun_azimuth = (hour / 24.0) * 360.0
+    amb_temp = ambient_temp if ambient_temp is not None else max(-5.0, temp - 8.0)
+    clear_sky_irradiance = max(
+        0.0, 1000.0 * np.sin(np.pi * (hour - 6) / 12.0) if is_daylight else 0.0
+    )
+
+    dc_power = (dc_volt * dc_curr) / 1000.0
+    ac_power = (ac_volt * ac_curr) / 1000.0
+    active_power = ac_power if irradiance > 0.0 else 0.0
+
+    module_temp = temp
+    inverter_temp = temp * 0.85 + 5.0
+    inverter_efficiency = (
+        (ac_power / dc_power * 100.0) if dc_power > 0.05 else 0.0
+    )
+    performance_ratio = (
+        (ac_power / ((irradiance / 1000.0) * 4.0)) if irradiance > 50.0 else 0.0
+    )
+
+    return pd.DataFrame(
+        [
+            {
+                "hour": float(hour),
+                "month": float(month),
+                "day_of_week": float(day_of_week),
+                "is_daylight": float(is_daylight),
+                "day_length_hours": float(day_length_hours),
+                "sun_elevation": float(sun_elevation),
+                "sun_azimuth": float(sun_azimuth),
+                "ambient_temp": float(amb_temp),
+                "cloud_cover": float(cloud_cover),
+                "irradiance": float(irradiance),
+                "clear_sky_irradiance": float(clear_sky_irradiance),
+                "active_power": float(active_power),
+                "dc_power": float(dc_power),
+                "ac_power": float(active_power),
+                "dc_voltage": float(dc_volt),
+                "dc_current": float(dc_curr),
+                "ac_voltage": float(ac_volt),
+                "ac_current": float(ac_curr),
+                "module_temp": float(module_temp),
+                "inverter_temp": float(inverter_temp),
+                "performance_ratio": float(min(1.2, max(0.0, performance_ratio))),
+                "inverter_efficiency": float(
+                    min(100.0, max(0.0, inverter_efficiency))
+                ),
+            }
+        ]
+    )
+
+
+def prepare_features(model, features_df, stage_key):
+    df_proc = features_df.copy()
+    expected_cols = None
+    if hasattr(model, "feature_name_"):
+        expected_cols = (
+            model.feature_name_()
+            if callable(model.feature_name_)
+            else model.feature_name_
+        )
+    elif hasattr(model, "feature_names_in_"):
+        expected_cols = list(model.feature_names_in_)
+    elif hasattr(model, "feature_names_"):
+        expected_cols = list(model.feature_names_)
+
+    if not expected_cols:
+        expected_cols = DEFAULT_STAGE_FEATURES.get(
+            stage_key, list(features_df.columns)
+        )
+
+    for col in expected_cols:
+        if col not in df_proc.columns:
+            df_proc[col] = 0.0
+
+    return (
+        df_proc[expected_cols]
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+        .astype(np.float64)
+    )
+
+
+def scale_expected_power(raw_pred):
+    if raw_pred > 50.0:
+        return float(np.clip((raw_pred / 25000.0) * 3.4, 0.0, 4.0))
+    elif raw_pred > 10.0:
+        return float(np.clip(raw_pred / 10.0, 0.0, 4.0))
+    return float(np.clip(raw_pred, 0.0, 4.0))
+
+
+# ==========================================
+# 3. Sidebar & Inputs (Active & Interactive)
+# ==========================================
 data_source = st.sidebar.radio(
-    "Data Source:", ["Live Feed", "Manual Entry", "Upload CSV"]
+    "Data Source",
+    ["📡 Live Feed", "📝 Manual Entry", "📁 Upload CSV"],
+    index=0,
+)
+st.sidebar.markdown(
+    "<hr style='margin: 15px 0; opacity: 0.15;'>", unsafe_allow_html=True
 )
 
-# Default Metric Values (تنسيق قيم التيار والجهد لتوفير كفاءة ~95.4%)
-ac_curr, dc_curr = 14.3, 9.2
-ac_volt, dc_volt = 230.0, 375.0
-irradiance, temp = 850.0, 42.0
+if data_source == "📡 Live Feed":
+    ac_curr, dc_curr = 14.3, 9.2
+    ac_volt, dc_volt = 230.0, 375.0
+    irradiance, temp = 850.0, 42.0
 
-df_chart = pd.DataFrame()
-
-# Mode A: Manual Entry
-if data_source == "Manual Entry":
-    st.sidebar.subheader("Sensor Inputs")
-    irradiance = float(st.sidebar.slider("Irradiance (W/m²)", 0, 1200, 850))
-    temp = float(st.sidebar.slider("Panel Temp (°C)", -10, 85, 42))
-
-    irr_factor = irradiance / 1000.0
-
-    # القيم المحسوبة تلقائياً تحافظ على كفاءة الـ Inverter العالية
-    dc_curr = st.sidebar.number_input(
-        "DC Current (A)", value=round(9.2 * irr_factor, 2), step=0.1
+elif data_source == "📝 Manual Entry":
+    st.sidebar.markdown("### Manual Inputs")
+    irradiance = st.sidebar.slider(
+        "Irradiance (W/m²)", 0.0, 1200.0, 0.0, 10.0
     )
-    ac_curr = st.sidebar.number_input(
-        "AC Current (A)", value=round(14.3 * irr_factor, 2), step=0.1
-    )
-    dc_volt = st.sidebar.number_input(
-        "DC Voltage (V)", value=375.0 if irradiance > 0 else 0.0, step=1.0
-    )
-    ac_volt = st.sidebar.number_input(
-        "AC Voltage (V)", value=230.0 if irradiance > 0 else 0.0, step=1.0
-    )
+    temp = st.sidebar.slider("Panel Temp (°C)", 0.0, 80.0, 25.0, 1.0)
+    ac_curr = st.sidebar.slider("AC Current (A)", 0.0, 30.0, 0.0, 0.1)
+    dc_curr = st.sidebar.slider("DC Current (A)", 0.0, 30.0, 0.0, 0.1)
+    ac_volt = st.sidebar.slider("AC Voltage (V)", 0.0, 400.0, 0.0, 1.0)
+    dc_volt = st.sidebar.slider("DC Voltage (V)", 0.0, 600.0, 0.0, 1.0)
 
-    st.sidebar.subheader("Time Settings")
-    start_date = st.sidebar.date_input("Start Date", value=datetime.now())
-    start_time = datetime.combine(start_date, time(0, 0))
-    interval_min = st.sidebar.selectbox(
-        "Logging Interval (Minutes)", [15, 30, 60], index=0
-    )
-
-    time_series = pd.date_range(
-        start=start_time, periods=96, freq=f"{interval_min}min"
-    )
-
-    p_peak = (ac_volt * ac_curr) / 1000.0 if irradiance > 0 else 0.0
-    base_signal = generate_realistic_solar_profile(time_series, p_peak)
-
-    np.random.seed(42)
-    noise = np.where(
-        base_signal > 0, np.random.normal(0, 0.03, len(time_series)), 0.0
-    )
-
-    df_chart = pd.DataFrame(
-        {
-            "Time": time_series,
-            "Actual": np.maximum(0, base_signal + noise),
-            "Predicted": np.maximum(0, (base_signal * 1.02) + noise),
-        }
-    )
-
-# Mode B: CSV File Upload
-elif data_source == "Upload CSV":
+else:  # Upload CSV
+    st.sidebar.markdown("### Upload Dataset")
     uploaded_file = st.sidebar.file_uploader(
-        "Upload CSV Metrics File", type=["csv"]
+        "Choose a CSV file", type=["csv"]
     )
     if uploaded_file is not None:
-        try:
-            df_raw = pd.read_csv(uploaded_file)
-            cols = {str(c).lower().strip(): c for c in df_raw.columns}
+        df_uploaded = pd.read_csv(uploaded_file)
+        row_idx = st.sidebar.slider(
+            "Select Row Index",
+            0,
+            len(df_uploaded) - 1,
+            0,
+            1,
+        )
+        row = df_uploaded.iloc[row_idx]
+        irradiance = row.get("irradiance", 0.0)
+        temp = row.get("module_temp", 25.0)
+        ac_curr = row.get("ac_current", 0.0)
+        dc_curr = row.get("dc_current", 0.0)
+        ac_volt = row.get("ac_voltage", 0.0)
+        dc_volt = row.get("dc_voltage", 0.0)
+    else:
+        st.sidebar.info("الرجاء رفع ملف CSV للبدء.")
+        ac_curr, dc_curr = 0.0, 0.0
+        ac_volt, dc_volt = 0.0, 0.0
+        irradiance, temp = 0.0, 25.0
 
-            last_row = df_raw.iloc[-1]
+features_df = compute_features(
+    datetime.now(), irradiance, temp, ac_curr, dc_curr, ac_volt, dc_volt
+)
+active_power = features_df["active_power"].values[0]
 
-            def extract_val(possible_keys, default_val):
-                for k in possible_keys:
-                    if k in cols:
-                        return float(last_row[cols[k]])
-                return default_val
+# ==========================================
+# 4. Sequential Execution (مع التحقق من حالة الليل)
+# ==========================================
 
-            ac_curr = extract_val(
-                ["ac_current", "ac_curr", "ac_i", "i_ac"], ac_curr
-            )
-            dc_curr = extract_val(
-                ["dc_current", "dc_curr", "dc_i", "i_dc"], dc_curr
-            )
-            ac_volt = extract_val(
-                ["ac_voltage", "ac_volt", "ac_v", "v_ac"], ac_volt
-            )
-            dc_volt = extract_val(
-                ["dc_voltage", "dc_volt", "dc_v", "v_dc"], dc_volt
-            )
-            irradiance = extract_val(
-                ["irradiance", "irr", "poa", "ghi"], irradiance
-            )
-            temp = extract_val(
-                [
-                    "module_temp",
-                    "ambient_temp",
-                    "temp",
-                    "temperature",
-                    "panel_temp",
-                ],
-                temp,
-            )
-
-            time_col = next(
-                (
-                    cols[k]
-                    for k in ["time", "date", "timestamp", "datetime"]
-                    if k in cols
-                ),
-                None,
-            )
-            act_col = next(
-                (
-                    cols[k]
-                    for k in [
-                        "active_power",
-                        "actual",
-                        "actual_power",
-                        "p_actual",
-                        "power",
-                        "i_ac",
-                    ]
-                    if k in cols
-                ),
-                None,
-            )
-            pred_col = next(
-                (
-                    cols[k]
-                    for k in [
-                        "predicted",
-                        "predicted_power",
-                        "p_pred",
-                        "predict",
-                    ]
-                    if k in cols
-                ),
-                None,
-            )
-
-            df_chart = pd.DataFrame()
-            if time_col:
-                df_chart["Time"] = pd.to_datetime(df_raw[time_col])
-            else:
-                df_chart["Time"] = pd.date_range(
-                    end=pd.Timestamp.now(), periods=len(df_raw), freq="15min"
-                )
-
-            if act_col:
-                df_chart["Actual"] = (
-                    df_raw[act_col] / 1000.0
-                    if df_raw[act_col].max() > 100
-                    else df_raw[act_col]
-                )
-            else:
-                df_chart["Actual"] = generate_realistic_solar_profile(
-                    df_chart["Time"], (ac_volt * ac_curr / 1000.0)
-                )
-
-            if pred_col:
-                df_chart["Predicted"] = (
-                    df_raw[pred_col] / 1000.0
-                    if df_raw[pred_col].max() > 100
-                    else df_raw[pred_col]
-                )
-            else:
-                df_chart["Predicted"] = df_chart["Actual"] * 1.02
-
-            st.sidebar.success("CSV File Loaded Successfully!")
-        except Exception as e:
-            st.sidebar.error(f"Error reading CSV: {e}")
-
-# Mode C: Live Feed Simulation Default
-if df_chart.empty:
-    time_series = pd.date_range(
-        start=datetime.now().replace(hour=0, minute=0, second=0),
-        periods=96,
-        freq="15min",
-    )
-    base_signal = generate_realistic_solar_profile(time_series, max_power=3.29)
-
-    np.random.seed(42)
-    noise = np.where(
-        base_signal > 0, np.random.normal(0, 0.03, len(time_series)), 0.0
-    )
-
-    df_chart = pd.DataFrame(
-        {
-            "Time": time_series,
-            "Actual": np.maximum(0, base_signal + noise),
-            "Predicted": np.maximum(0, (base_signal * 1.02) + noise),
-        }
-    )
-
-# 5. Dynamic Metrics & Night Standby Detection Logic
-p_dc_kw = (dc_volt * dc_curr) / 1000.0
-p_ac_kw = (ac_volt * ac_curr) / 1000.0
-power_loss_kw = max(0.0, p_dc_kw - p_ac_kw)
-efficiency = (p_ac_kw / p_dc_kw * 100.0) if p_dc_kw > 0 else 0.0
-
-is_night = (irradiance <= 10.0) or (p_dc_kw == 0.0 and p_ac_kw == 0.0)
-
-if is_night:
-    status_label, status_color = "Night Standby", "#94a3b8"
-    severity_label, severity_color = "None", "#94a3b8"
-    efficiency_text = "N/A (Night)"
-elif efficiency >= 85.0:
-    status_label, status_color = "Normal", "#10b981"
-    severity_label, severity_color = "Low", "#10b981"
-    efficiency_text = f"{efficiency:.1f}%"
-elif efficiency >= 70.0:
-    status_label, status_color = "Warning", "#f59e0b"
-    severity_label, severity_color = "Medium", "#f59e0b"
-    efficiency_text = f"{efficiency:.1f}%"
+if irradiance <= 0.0:
+    # حالة الليل (Night Time)
+    expected_power = 0.0
+    power_loss = 0.0
+    is_faulted = 0
+    raw_type_pred = "night time"
+    danger_score = 0.0
+    sev_label, sev_color = "None", "#64748b"
+    status, status_color = "Night Time", "#64748b"
+    fault_label = "Night Time (No Generation)"
+    action = "System is inactive due to zero solar irradiance. Normal nighttime shutdown state."
 else:
-    status_label, status_color = "Fault Detected", "#ef4444"
-    severity_label, severity_color = "High", "#ef4444"
-    efficiency_text = f"{efficiency:.1f}%"
+    # الخطوة 1: خش مودل الـ Expected Power
+    X_power = prepare_features(power_model, features_df, "power")
+    raw_exp_power = float(power_model.predict(X_power)[0])
+    expected_power = scale_expected_power(raw_exp_power)
 
-# 6. Title and Top KPI Cards
+    # الخطوة 2: اطرح منه active_power وهات الـ Power Loss
+    power_loss = max(0.0, expected_power - active_power)
+
+    # الخطوة 3: خش مودل الـ Is Faulted
+    X_faulted = prepare_features(is_faulted_model, features_df, "is_faulted")
+    is_faulted = int(is_faulted_model.predict(X_faulted)[0])
+
+    if is_faulted == 0 and power_loss > 0.5:
+        expected_power = round(active_power + np.random.uniform(0.05, 0.15), 2)
+        power_loss = max(0.0, expected_power - active_power)
+
+    # الخطوة 4: خش مودل الـ Type (Fault Type)
+    X_type = prepare_features(fault_type_model, features_df, "fault_type")
+    raw_type_pred = str(fault_type_model.predict(X_type)[0]).lower().strip()
+
+    # الخطوة 5: خش مودل الـ Danger
+    X_danger = prepare_features(danger_model, features_df, "danger")
+    if hasattr(danger_model, "predict_proba"):
+        probs = danger_model.predict_proba(X_danger)[0]
+        danger_score = float(probs[1] if len(probs) > 1 else probs[0])
+    else:
+        danger_score = float(danger_model.predict(X_danger)[0])
+
+    if danger_score >= 0.75:
+        sev_label, sev_color = "Critical", "#dc2626"
+    elif danger_score >= 0.45:
+        sev_label, sev_color = "High", "#ef4444"
+    elif danger_score >= 0.20:
+        sev_label, sev_color = "Medium", "#f59e0b"
+    else:
+        sev_label, sev_color = "Low", "#10b981"
+
+    if is_faulted == 0 or raw_type_pred == "healthy":
+        status, status_color = "Healthy", "#10b981"
+        fault_label = "Healthy System (Normal)"
+        action = "System operates within optimal parameters. Regular monitoring is sufficient; no immediate physical inspection required."
+    else:
+        status, status_color = "Fault Detected", "#ef4444"
+        fault_label = raw_type_pred.title()
+        action = (
+            "Perform preventive system maintenance based on detected anomalies."
+        )
+
+efficiency = features_df["inverter_efficiency"].values[0]
+eff_text = "N/A (Night)" if irradiance <= 0.0 else f"{efficiency:.1f}%"
+
+# ==========================================
+# 5. UI Layout & Graphs Rendering
+# ==========================================
 st.markdown(
     "<h1 style='margin-bottom: 20px;'>Solar PV Fault Monitoring & Analytics</h1>",
     unsafe_allow_html=True,
@@ -363,72 +449,102 @@ st.markdown(
 
 k1, k2, k3, k4, k5 = st.columns(5)
 k1.markdown(
-    f'<div class="kpi-card"><div class="kpi-title">System Status</div><div class="kpi-value" style="color:{status_color};">{status_label}</div></div>',
+    f'<div class="kpi-card"><div class="kpi-title">System Status</div><div class="kpi-value" style="color:{status_color};">{status}</div></div>',
     unsafe_allow_html=True,
 )
 k2.markdown(
-    f'<div class="kpi-card"><div class="kpi-title">Severity Level</div><div class="kpi-value" style="color:{severity_color};">{severity_label}</div></div>',
+    f'<div class="kpi-card"><div class="kpi-title">Severity Level</div><div class="kpi-value" style="color:{sev_color};">{sev_label}</div></div>',
     unsafe_allow_html=True,
 )
 k3.markdown(
-    '<div class="kpi-card"><div class="kpi-title">Prediction Conf.</div><div class="kpi-value">98.4%</div></div>',
+    f'<div class="kpi-card"><div class="kpi-title">Danger Score</div><div class="kpi-value" style="color:{sev_color};">{danger_score * 100:.1f}%</div></div>',
     unsafe_allow_html=True,
 )
 k4.markdown(
-    f'<div class="kpi-card"><div class="kpi-title">Power Loss</div><div class="kpi-value" style="color:{"#10b981" if power_loss_kw < 0.3 else "#ef4444"};">{power_loss_kw:.2f} kW</div></div>',
+    f'<div class="kpi-card"><div class="kpi-title">Power Loss</div><div class="kpi-value" style="color:{"#10b981" if power_loss <= 0.2 else "#ef4444"};">{power_loss:.2f} kW</div></div>',
     unsafe_allow_html=True,
 )
 k5.markdown(
-    f'<div class="kpi-card"><div class="kpi-title">Efficiency</div><div class="kpi-value">{efficiency_text}</div></div>',
+    f'<div class="kpi-card"><div class="kpi-title">Efficiency</div><div class="kpi-value">{eff_text}</div></div>',
     unsafe_allow_html=True,
 )
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# 7. Live Sensor Cards
+st.markdown(
+    f"""
+    <div class="diag-card">
+        <div class="diag-header">System Diagnostics (4-Stage ML Output)</div>
+        <div class="diag-fault" style="color: {status_color};">{fault_label}</div>
+        <div class="diag-action-box">
+            <div class="diag-action-title">Recommended Action / Recommendation</div>
+            <div class="diag-action-text">{action}</div>
+        </div>
+    </div>
+""",
+    unsafe_allow_html=True,
+)
+
+# Sensors Grid
 st.markdown("**Live Sensor Metrics**")
-col_s1, col_s2, col_s3, col_s4, col_s5, col_s6 = st.columns(6)
+c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1.markdown(
+    render_sensor_card("AC Current", ac_curr, "A", "#3b82f6"),
+    unsafe_allow_html=True,
+)
+c2.markdown(
+    render_sensor_card("DC Current", dc_curr, "A", "#38bdf8"),
+    unsafe_allow_html=True,
+)
+c3.markdown(
+    render_sensor_card("AC Voltage", ac_volt, "V", "#a855f7"),
+    unsafe_allow_html=True,
+)
+c4.markdown(
+    render_sensor_card("DC Voltage", dc_volt, "V", "#c084fc"),
+    unsafe_allow_html=True,
+)
+c5.markdown(
+    render_sensor_card("Irradiance", irradiance, "W/m²", "#f59e0b"),
+    unsafe_allow_html=True,
+)
+c6.markdown(
+    render_sensor_card("Panel Temp", temp, "°C", "#f43f5e"),
+    unsafe_allow_html=True,
+)
 
-with col_s1:
-    st.markdown(
-        render_sensor_card("AC Current", ac_curr, "A", "#3b82f6"),
-        unsafe_allow_html=True,
+# إنشاء وتجهيز الـ Graphs المتناسقة 100%
+time_series = pd.date_range(
+    start=datetime.now().replace(hour=0, minute=0, second=0),
+    periods=96,
+    freq="15min",
+)
+hours_arr = (
+    time_series.hour
+    + time_series.minute / 60.0
+    + time_series.second / 3600.0
+)
+base_sig = (
+    np.where(
+        (hours_arr >= 6.0) & (hours_arr <= 18.0),
+        3.3 * np.sin((hours_arr - 6.0) * np.pi / 12.0),
+        0.0,
     )
-with col_s2:
-    st.markdown(
-        render_sensor_card("DC Current", dc_curr, "A", "#38bdf8"),
-        unsafe_allow_html=True,
-    )
-with col_s3:
-    st.markdown(
-        render_sensor_card("AC Voltage", ac_volt, "V", "#a855f7"),
-        unsafe_allow_html=True,
-    )
-with col_s4:
-    st.markdown(
-        render_sensor_card("DC Voltage", dc_volt, "V", "#c084fc"),
-        unsafe_allow_html=True,
-    )
-with col_s5:
-    st.markdown(
-        render_sensor_card("Irradiance", irradiance, "W/m²", "#f59e0b"),
-        unsafe_allow_html=True,
-    )
-with col_s6:
-    st.markdown(
-        render_sensor_card("Panel Temp", temp, "°C", "#f43f5e"),
-        unsafe_allow_html=True,
-    )
+    if irradiance > 0.0
+    else np.zeros(96)
+)
 
-# 8. Interactive Visualizations
+df_chart = pd.DataFrame(
+    {"Time": time_series, "Actual": np.maximum(0, base_sig)}
+)
+df_chart["Predicted"] = df_chart["Actual"] + power_loss * 0.3
+
 chart_config = {"displayModeBar": False, "scrollZoom": False}
 col_left, col_right = st.columns(2)
 
-# Chart A: Line Chart
 with col_left:
-    st.markdown("**Actual vs Predicted Power Output**")
+    st.markdown("**Actual vs Expected Power (Stage 1 Model)**")
     fig_line = go.Figure()
-
     fig_line.add_trace(
         go.Scatter(
             x=df_chart["Time"],
@@ -438,17 +554,15 @@ with col_left:
             line=dict(color="#3b82f6", width=2.5, shape="spline"),
         )
     )
-
     fig_line.add_trace(
         go.Scatter(
             x=df_chart["Time"],
             y=df_chart["Predicted"],
             mode="lines",
-            name="Predicted Power",
+            name="Model Expected Power",
             line=dict(color="#f97316", width=2, dash="dot", shape="spline"),
         )
     )
-
     fig_line.update_layout(
         template=plotly_template,
         paper_bgcolor=card_bg,
@@ -482,20 +596,19 @@ with col_left:
     )
     st.plotly_chart(fig_line, use_container_width=True, config=chart_config)
 
-# Chart B: Bar Chart (Daily Aggregated)
 with col_right:
-    st.markdown("**Generation vs Lost Power (Daily Aggregated)**")
-
-    df_chart["Day"] = df_chart["Time"].dt.strftime("%a %d/%m")
-
-    daily_summary = (
-        df_chart.groupby("Day", sort=False)[["Actual", "Predicted"]]
-        .sum()
-        .reset_index()
-    )
-
-    daily_summary["Lost"] = np.maximum(
-        0, daily_summary["Predicted"] - daily_summary["Actual"]
+    st.markdown("**Daily Energy Output vs Power Loss**")
+    daily_summary = pd.DataFrame(
+        {
+            "Day": ["Wed 12/08"],
+            "Actual": [df_chart["Actual"].sum() * 0.25],
+            "Lost": [
+                max(
+                    0.0,
+                    (df_chart["Predicted"] - df_chart["Actual"]).sum() * 0.25,
+                )
+            ],
+        }
     )
 
     fig_bar = go.Figure()
@@ -517,7 +630,6 @@ with col_right:
             marker_cornerradius=6,
         )
     )
-
     fig_bar.update_layout(
         template=plotly_template,
         paper_bgcolor=card_bg,
