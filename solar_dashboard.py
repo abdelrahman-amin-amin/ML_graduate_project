@@ -307,12 +307,10 @@ def prepare_features(model, features_df, stage_key):
     )
 
 
-# دالة معالجة وتحويل وحدة Expected Power من Watts إلى kW تلقائياً لو لزم الأمر
 def scale_expected_power(raw_pred, active_power):
     val = float(raw_pred)
-    if val > 50.0:  # يعني الناتج مدرب بالـ Watts
+    if val > 50.0:
         val = val / 1000.0
-    # ضمان أن المتوقع دائماً منطقي وأعلى من الفعلي لو الكفاءة طبيعية، أو الفرق محسوب بدقة
     return max(active_power, val)
 
 
@@ -344,7 +342,7 @@ elif data_source == "📝 Manual Entry":
     ac_volt = st.sidebar.slider("AC Voltage (V)", 0.0, 400.0, 219.0, 1.0)
     dc_volt = st.sidebar.slider("DC Voltage (V)", 0.0, 600.0, 390.0, 1.0)
 
-else:  # Upload CSV
+else:
     st.sidebar.markdown("### Upload Dataset")
     uploaded_file = st.sidebar.file_uploader(
         "Choose a CSV file", type=["csv"]
@@ -377,9 +375,8 @@ features_df = compute_features(
 active_power = features_df["active_power"].values[0]
 
 # ==========================================
-# 4. Sequential Execution (التشغيل بالتتابع)
+# 4. Sequential Execution
 # ==========================================
-
 fault_solutions = {
     "shading": (
         "Check for surrounding physical obstructions, tree branches, or debris"
@@ -426,28 +423,23 @@ if irradiance <= 0.0:
     fault_label = "Night Time (No Generation)"
     action = "System is inactive due to zero solar irradiance. Normal nighttime shutdown state."
 else:
-    # 1. مودل المتوقع (Expected Power) مع مواءمة الوحدات بدقة
     X_power = prepare_features(power_model, features_df, "power")
     raw_exp_power = float(power_model.predict(X_power)[0])
     expected_power = scale_expected_power(raw_exp_power, active_power)
 
-    # لو فيه عطل حقيقي أو هبوط في الجهد/التيار، الـ Expected هيبقى أعلى بفارق حقيقي فـ Power Loss يتحسب بشكل صحيح
     if expected_power <= active_power:
         expected_power = active_power + (
             (irradiance / 1000.0) * 0.15
-        )  # فرق منطقي بناءً على الإشعاع
+        )
 
     power_loss = max(0.0, round(expected_power - active_power, 2))
 
-    # 2. مودل تحديد هل يوجد عطل (Is Faulted)
     X_faulted = prepare_features(is_faulted_model, features_df, "is_faulted")
     is_faulted = int(is_faulted_model.predict(X_faulted)[0])
 
-    # 3. مودل نوع العطل (Fault Type)
     X_type = prepare_features(fault_type_model, features_df, "fault_type")
     raw_type_pred = str(fault_type_model.predict(X_type)[0]).lower().strip()
 
-    # 4. مودل درجة الخطورة (Danger Score)
     X_danger = prepare_features(danger_model, features_df, "danger")
     if hasattr(danger_model, "predict_proba"):
         probs = danger_model.predict_proba(X_danger)[0]
@@ -691,7 +683,6 @@ with col_right:
             fixedrange=True,
             tickfont=dict(color=text_color, size=11),
         ),
-        yaxis=dict,
         yaxis=dict(
             showgrid=True,
             gridcolor=grid_color,
