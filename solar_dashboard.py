@@ -1,4 +1,5 @@
 from datetime import datetime, time
+import time as t_lib
 import os
 import joblib
 import numpy as np
@@ -198,7 +199,6 @@ if not models_loaded:
 
 
 def compute_features_from_row(row):
-    # محاولة استخراج التاريخ والوقت إذا وجد في الداتا أو استخدام الوقت الحالي
     time_val = row.get("Timestamp", row.get("time", datetime.now()))
     dt = (
         pd.to_datetime(time_val)
@@ -210,16 +210,49 @@ def compute_features_from_row(row):
     month = dt.month
     day_of_week = dt.dayofweek
 
-    irradiance = float(row.get("irradiance", 790.0))
+    irradiance = float(row.get("irradiance", 0.0))
     temp = float(
-        row.get("module_temp", row.get("temp", 49.0))
+        row.get("module_temp", row.get("temp", 25.0))
     )
-    ac_curr = float(row.get("ac_current", 15.3))
-    dc_curr = float(row.get("dc_current", 16.7))
-    ac_volt = float(row.get("ac_voltage", 219.0))
-    dc_volt = float(row.get("dc_voltage", 390.0))
+    ac_curr = float(row.get("ac_current", 0.0))
+    dc_curr = float(row.get("dc_current", 0.0))
+    ac_volt = float(row.get("ac_voltage", 0.0))
+    dc_volt = float(row.get("dc_voltage", 0.0))
 
-    is_daylight = 1 if irradiance > 10.0 else 0
+    # حراسة منطقية لمنع الأعطال الوهمية ليلاً أو عند انعدام الإشعاع
+    is_daylight = 1 if irradiance > 15.0 else 0
+    if is_daylight == 0:
+        irradiance = 0.0
+        ac_curr = 0.0
+        dc_curr = 0.0
+        active_power = 0.0
+        dc_power = 0.0
+        performance_ratio = 0.0
+        inverter_efficiency = 0.0
+    else:
+        dc_power = max(0.0, (dc_volt * dc_curr) / 1000.0)
+        active_power = max(
+            0.0,
+            float(
+                row.get(
+                    "active_power",
+                    (ac_volt * ac_curr) / 1000.0
+                    if ac_volt > 0 and ac_curr > 0
+                    else 0.0,
+                )
+            ),
+        )
+        inverter_efficiency = (
+            min(100.0, (active_power / dc_power * 100.0))
+            if dc_power > 0.05
+            else 0.0
+        )
+        performance_ratio = (
+            min(1.2, max(0.0, active_power / ((irradiance / 1000.0) * 4.0)))
+            if irradiance > 50.0
+            else 0.0
+        )
+
     day_length_hours = 12.0
     sun_elevation = max(
         0.0, 90.0 * np.sin(np.pi * (hour - 6) / 12.0) if is_daylight else 0.0
@@ -230,24 +263,8 @@ def compute_features_from_row(row):
         0.0, 1000.0 * np.sin(np.pi * (hour - 6) / 12.0) if is_daylight else 0.0
     )
 
-    dc_power = (dc_volt * dc_curr) / 1000.0
-    active_power = (
-        row.get("active_power", (ac_volt * ac_curr) / 1000.0)
-        if irradiance > 0.0
-        else 0.0
-    )
-    active_power = float(active_power)
-
     module_temp = temp
     inverter_temp = temp * 0.85 + 5.0
-    inverter_efficiency = (
-        (active_power / dc_power * 100.0) if dc_power > 0.05 else 0.0
-    )
-    performance_ratio = (
-        (active_power / ((irradiance / 1000.0) * 4.0))
-        if irradiance > 50.0
-        else 0.0
-    )
 
     return pd.DataFrame(
         [
@@ -273,10 +290,8 @@ def compute_features_from_row(row):
                 "ac_current": float(ac_curr),
                 "module_temp": float(module_temp),
                 "inverter_temp": float(inverter_temp),
-                "performance_ratio": float(min(1.2, max(0.0, performance_ratio))),
-                "inverter_efficiency": float(
-                    min(100.0, max(0.0, inverter_efficiency))
-                ),
+                "performance_ratio": float(performance_ratio),
+                "inverter_efficiency": float(inverter_efficiency),
             }
         ]
     )
@@ -365,13 +380,19 @@ else:
     )
     if uploaded_file is not None:
         df_uploaded = pd.read_csv(uploaded_file)
-        row_idx = st.sidebar.slider(
-            "Select Row Index (for Live Diagnostics)",
-            0,
-            len(df_uploaded) - 1,
-            0,
-            1,
-        )
+
+        # زر تشغيل القراءة دقيقة بدقيقة (Streaming Playback)
+        play_stream = st.sidebar.checkbox("▶ Play Timeline Minute-by-Minute", value=False)
+        
+        if play_stream:
+            row_idx = st.sidebar.slider(
+                "Playback Step", 0, len(df_uploaded) - 1, 0, 1
+            )
+        else:
+            row_idx = st.sidebar.slider(
+                "Select Row Index", 0, len(df_uploaded) - 1, 0, 1
+            )
+            
         row_data = df_uploaded.iloc[row_idx].to_dict()
     else:
         st.sidebar.info("الرجاء رفع ملف CSV لعرض البيانات.")
@@ -427,16 +448,16 @@ fault_solutions = {
     ),
 }
 
-if irradiance <= 0.0:
+if irradiance <= 15.0:
     expected_power = 0.0
     power_loss = 0.0
     is_faulted = 0
-    raw_type_pred = "night time"
+    raw_type_pred = "healthy"
     danger_score = 0.0
     sev_label, sev_color = "None", "#64748b"
-    status, status_color = "Night Time", "#64748b"
-    fault_label = "Night Time (No Generation)"
-    action = "System is inactive due to zero solar irradiance. Normal nighttime shutdown state."
+    status, status_color = "Night / Low Sun", "#64748b"
+    fault_label = "Normal Inactive State (Night/Low Irradiance)"
+    action = "System is inactive or in low-light conditions. No generation expected, no faults detected."
 else:
     X_power = prepare_features(power_model, features_df, "power")
     raw_exp_power = float(power_model.predict(X_power)[0])
@@ -460,22 +481,24 @@ else:
     else:
         danger_score = float(danger_model.predict(X_danger)[0])
 
-    if danger_score >= 0.75:
-        sev_label, sev_color = "Critical", "#dc2626"
-    elif danger_score >= 0.45:
-        sev_label, sev_color = "High", "#ef4444"
-    elif danger_score >= 0.20:
-        sev_label, sev_color = "Medium", "#f59e0b"
-    else:
-        sev_label, sev_color = "Low", "#10b981"
-
-    if is_faulted == 0 or raw_type_pred == "healthy":
+    if is_faulted == 0 or raw_type_pred == "healthy" or power_loss < 0.15:
         status, status_color = "Healthy", "#10b981"
+        sev_label, sev_color = "Low", "#10b981"
+        danger_score = min(danger_score, 0.15)
         fault_label = "Healthy System (Normal)"
         action = "System operates within optimal parameters. Regular monitoring is sufficient; no immediate physical inspection required."
     else:
         status, status_color = "Fault Detected", "#ef4444"
         fault_label = raw_type_pred.title()
+        if danger_score >= 0.75:
+            sev_label, sev_color = "Critical", "#dc2626"
+        elif danger_score >= 0.45:
+            sev_label, sev_color = "High", "#ef4444"
+        elif danger_score >= 0.20:
+            sev_label, sev_color = "Medium", "#f59e0b"
+        else:
+            sev_label, sev_color = "Low", "#10b981"
+
         action = fault_solutions.get(
             raw_type_pred,
             "Perform a comprehensive on-site inspection of the PV strings, check"
@@ -483,10 +506,10 @@ else:
         )
 
 efficiency = features_df["inverter_efficiency"].values[0]
-eff_text = "N/A (Night)" if irradiance <= 0.0 else f"{efficiency:.1f}%"
+eff_text = "N/A (Night)" if irradiance <= 15.0 else f"{efficiency:.1f}%"
 
 # ==========================================
-# 5. UI Layout & Graphs Rendering
+# 5. UI Layout & KPI Cards
 # ==========================================
 st.markdown(
     "<h1 style='margin-bottom: 20px;'>Solar PV Fault Monitoring & Analytics</h1>",
@@ -572,7 +595,7 @@ c6.markdown(
 )
 
 # ==========================================
-# 6. Charts Generation (Full Dataset Analysis)
+# 6. Charts Generation (Progressive / Full Timeline)
 # ==========================================
 chart_config = {"displayModeBar": False, "scrollZoom": False}
 col_left, col_right = st.columns(2)
@@ -585,7 +608,6 @@ if df_uploaded is not None and (
     df_chart_full["ParsedTime"] = pd.to_datetime(df_chart_full[time_col])
     df_chart_full = df_chart_full.sort_values("ParsedTime")
 
-    # Line Chart Data (Actual vs Expected across time)
     df_chart_full["Actual_Power"] = df_chart_full.get(
         "active_power",
         (
@@ -594,15 +616,25 @@ if df_uploaded is not None and (
         )
         / 1000.0,
     )
-    df_chart_full["Expected_Power"] = df_chart_full["Actual_Power"] + 0.1
+    df_chart_full["Expected_Power"] = df_chart_full["Actual_Power"] * 1.05
+
+    # إذا كان خيار الـ Play مفعل، نقوم بقص الداتا حتى نقطة المؤشر (رسم تدريجي دقيقة بدقيقة)
+    if locals().get("play_stream", False):
+        df_plot_subset = df_chart_full.iloc[: row_idx + 1]
+    else:
+        df_plot_subset = df_chart_full
 
     with col_left:
-        st.markdown("**Actual vs Expected Power (Full Timeline)**")
+        st.markdown(
+            "**Actual vs Expected Power (Progressive Timeline)**"
+            if locals().get("play_stream", False)
+            else "**Actual vs Expected Power (Full Timeline)**"
+        )
         fig_line = go.Figure()
         fig_line.add_trace(
             go.Scatter(
-                x=df_chart_full["ParsedTime"],
-                y=df_chart_full["Actual_Power"],
+                x=df_plot_subset["ParsedTime"],
+                y=df_plot_subset["Actual_Power"],
                 mode="lines",
                 name="Actual Power",
                 line=dict(color="#3b82f6", width=2, shape="spline"),
@@ -610,8 +642,8 @@ if df_uploaded is not None and (
         )
         fig_line.add_trace(
             go.Scatter(
-                x=df_chart_full["ParsedTime"],
-                y=df_chart_full["Expected_Power"],
+                x=df_plot_subset["ParsedTime"],
+                y=df_plot_subset["Expected_Power"],
                 mode="lines",
                 name="Expected Power",
                 line=dict(color="#f97316", width=1.5, dash="dot"),
@@ -652,7 +684,6 @@ if df_uploaded is not None and (
     with col_right:
         st.markdown("**Daily Energy Output vs Power Loss (All Days)**")
         df_chart_full["Date"] = df_chart_full["ParsedTime"].dt.date
-        # افتراض أن كل صف يمثل فترة زمنية (مثلا ساعة أو 15 دقيقة، لنفترض 1 ساعة كتقريب للطاقة kWh)
         df_chart_full["Generated_Energy"] = (
             df_chart_full["Actual_Power"] * 1.0
         )
@@ -717,8 +748,13 @@ if df_uploaded is not None and (
         )
         st.plotly_chart(fig_bar, use_container_width=True, config=chart_config)
 
+    # إذا كان خيار الـ Play مفعل، نقوم بعمل ريفريش تلقائي لتحديث الخطوة بخطوة
+    if locals().get("play_stream", False) and row_idx < len(df_uploaded) - 1:
+        t_lib.sleep(0.3)
+        st.rerun()
+
 else:
-    # رسومات افتراضية في حال لم يتم رفع ملف يحتوي على أعمدة تاريخ واضحة
+    # رسومات افتراضية في حال عدم رفع ملف CSV
     time_series = pd.date_range(
         start=datetime.now().replace(hour=0, minute=0, second=0),
         periods=96,
@@ -829,7 +865,7 @@ else:
             )
         )
         fig_bar.update_layout(
-            template=plotly_template,
+            template=plotly_temp := plotly_template,
             paper_bgcolor=card_bg,
             plot_bgcolor=card_bg,
             barmode="group",
