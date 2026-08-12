@@ -35,7 +35,7 @@ else:
     plotly_template = "plotly_white"
     grid_color = "#e2e8f0"
 
-# 3. Custom CSS Styles (تم إضافة تعديل اتجاه السلايدر هنا)
+# 3. Custom CSS Styles
 st.markdown(
     f"""
     <style>
@@ -50,10 +50,14 @@ st.markdown(
         padding-top: 2.5rem !important;
         padding-bottom: 1.5rem;
     }}
-    /* إجبار اتجاه السلايدر ليكون من اليسار لليمين LTR */
-    div[data-baseweb="slider"] {{
+    
+    /* إصلاح اتجاه السلايدر ومنع انعكاس القيم والقواعد */
+    div[data-testid="stSlider"],
+    div[data-baseweb="slider"],
+    div[data-baseweb="slider"] * {{
         direction: ltr !important;
     }}
+
     .sensor-card {{
         background: {card_bg};
         border-radius: 14px;
