@@ -16,7 +16,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.sidebar.title("Control Panel")
+# Control Panel Title Customization (Enlarged size)
+st.sidebar.markdown(
+    "<h1 style='font-size: 1.8rem; font-weight: 800; margin-bottom: 10px;'>Control Panel</h1>",
+    unsafe_allow_html=True,
+)
 dark_mode = st.sidebar.toggle("Dark Mode", value=True)
 
 if dark_mode:
@@ -59,13 +63,29 @@ st.markdown(
     }}
     div[data-testid="stSidebar"] div[data-testid="stRadio"] label > div:first-child {{ display: none !important; }}
     div[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] {{ gap: 8px !important; }}
+    
     div[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] label {{
-        background-color: {btn_bg}; color: {text_color} !important; padding: 10px 14px !important;
-        border-radius: 8px !important; margin: 0 !important; cursor: pointer; width: 100% !important;
-        transition: all 0.2s ease; font-weight: 600; font-size: 0.9rem; display: block; text-align: center; border: 1px solid {border_color};
+        background-color: {btn_bg}; 
+        color: {text_color} !important; 
+        padding: 12px 16px !important;
+        border-radius: 10px !important; 
+        margin: 0 !important; 
+        cursor: pointer; 
+        width: 100% !important;
+        transition: all 0.2s ease; 
+        font-weight: 600; 
+        font-size: 0.95rem; 
+        display: flex !important; 
+        align-items: center !important; 
+        gap: 12px !important;
+        text-align: left !important; 
+        border: 1px solid {border_color};
     }}
     div[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {{
-        background-color: {active_btn_bg} !important; color: #ffffff !important; border-color: {active_btn_bg} !important; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        background-color: {active_btn_bg} !important; 
+        color: #ffffff !important; 
+        border-color: {active_btn_bg} !important; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }}
 
     .sensor-card {{ background: {card_bg}; border-radius: 14px; padding: 14px 16px; border: 1px solid {border_color}; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 12px; }}
@@ -103,99 +123,172 @@ def render_sensor_card(title, value, unit, color="#3b82f6"):
 
 
 # ==========================================
-# 2. ML Engine & Models Loading
+# 2. ML Engine & Models Loading (Blend: CatBoost + LightGBM)
 # ==========================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELS_DIR = os.path.join(BASE_DIR, "saved_models")
+
 REQUIRED_MODELS = {
-    "power_model": "Expected_Power_LGBM.pkl",
-    "is_faulted_model": "is_faulted_LGBM.pkl",
-    "fault_type_model": "fault_type_LGBM.pkl",
-    "danger_model": "danger_LGBM.pkl",
+    "power_cat": os.path.join(MODELS_DIR, "cat_reg_m1.pkl"),
+    "power_lgbm": os.path.join(MODELS_DIR, "lgbm_reg_m1.pkl"),
+    "power_weight": os.path.join(MODELS_DIR, "blend_weight_m1.pkl"),
+    "is_faulted_cat": os.path.join(MODELS_DIR, "cat_model_m2.pkl"),
+    "is_faulted_lgbm": os.path.join(MODELS_DIR, "lgbm_model_m2.pkl"),
+    "fault_type_cat": os.path.join(MODELS_DIR, "cat_model_m3.pkl"),
+    "fault_type_lgbm": os.path.join(MODELS_DIR, "lgbm_model_m3.pkl"),
+    "fault_type_classes": os.path.join(MODELS_DIR, "classes_m3.pkl"),
+    "danger_cat": os.path.join(MODELS_DIR, "cat_model_m4.pkl"),
+    "danger_lgbm": os.path.join(MODELS_DIR, "lgbm_model_m4.pkl"),
+    "danger_classes": os.path.join(MODELS_DIR, "classes_m4.pkl"),
 }
+
+_STAGE2_3_4_FEATURES = [
+    "active_power",
+    "irradiance",
+    "clear_sky_irradiance",
+    "ambient_temp",
+    "module_temp",
+    "inverter_temp",
+    "dc_voltage",
+    "dc_current",
+    "ac_voltage",
+    "ac_current",
+    "performance_ratio",
+    "cloud_cover",
+    "sun_elevation",
+    "sun_azimuth",
+    "day_length_hours",
+    "dc_power",
+    "ac_power",
+    "inverter_efficiency",
+    "hour",
+    "month",
+    "day_of_week",
+    "is_daylight",
+]
 
 DEFAULT_STAGE_FEATURES = {
     "power": [
+        "irradiance",
+        "clear_sky_irradiance",
+        "ambient_temp",
+        "module_temp",
+        "inverter_temp",
+        "cloud_cover",
+        "sun_elevation",
+        "sun_azimuth",
+        "day_length_hours",
         "hour",
         "month",
         "day_of_week",
         "is_daylight",
-        "day_length_hours",
-        "sun_elevation",
-        "sun_azimuth",
-        "ambient_temp",
-        "cloud_cover",
-        "irradiance",
-        "clear_sky_irradiance",
-        "module_temp",
     ],
-    "is_faulted": [
-        "irradiance",
-        "active_power",
-        "dc_power",
-        "ac_power",
-        "dc_voltage",
-        "dc_current",
-        "ac_voltage",
-        "ac_current",
-        "module_temp",
-        "inverter_temp",
-        "performance_ratio",
-        "inverter_efficiency",
-    ],
-    "fault_type": [
-        "irradiance",
-        "active_power",
-        "dc_power",
-        "ac_power",
-        "dc_voltage",
-        "dc_current",
-        "ac_voltage",
-        "ac_current",
-        "module_temp",
-        "inverter_temp",
-        "performance_ratio",
-        "inverter_efficiency",
-    ],
-    "danger": [
-        "active_power",
-        "dc_power",
-        "ac_power",
-        "performance_ratio",
-        "inverter_efficiency",
-        "module_temp",
-        "inverter_temp",
-    ],
+    "is_faulted": list(_STAGE2_3_4_FEATURES),
+    "fault_type": list(_STAGE2_3_4_FEATURES),
+    "danger": list(_STAGE2_3_4_FEATURES),
 }
 
 
 @st.cache_resource
 def load_models():
+    missing_files = [path for path in REQUIRED_MODELS.values() if not os.path.exists(path)]
+    if missing_files:
+        return None, False, ["Missing file(s):\n" + "\n".join(missing_files)]
     try:
-        return (
-            joblib.load(REQUIRED_MODELS["power_model"]),
-            joblib.load(REQUIRED_MODELS["is_faulted_model"]),
-            joblib.load(REQUIRED_MODELS["fault_type_model"]),
-            joblib.load(REQUIRED_MODELS["danger_model"]),
-            True,
-            [],
-        )
+        models = {key: joblib.load(path) for key, path in REQUIRED_MODELS.items()}
+        return models, True, []
     except Exception as e:
-        return None, None, None, None, False, [str(e)]
+        return None, False, [str(e)]
 
 
-(
-    power_model,
-    is_faulted_model,
-    fault_type_model,
-    danger_model,
-    models_loaded,
-    missing_info,
-) = load_models()
+models, models_loaded, missing_info = load_models()
 
 if not models_loaded:
-    st.error(
-        f"❌ **تعذر تحميل نماذج الذكاء الاصطناعي:** {missing_info[0] if missing_info else ''}"
-    )
+    st.error("❌ **Failed to load AI models**")
+    st.code(missing_info[0] if missing_info else "Unknown error")
+    st.info(f"Expected folder: `{MODELS_DIR}`")
     st.stop()
+    raise SystemExit(0)
+
+power_cat = models["power_cat"]
+power_lgbm = models["power_lgbm"]
+power_weight = models["power_weight"]
+
+is_faulted_cat = models["is_faulted_cat"]
+is_faulted_lgbm = models["is_faulted_lgbm"]
+
+fault_type_cat = models["fault_type_cat"]
+fault_type_lgbm = models["fault_type_lgbm"]
+fault_type_classes = list(models["fault_type_classes"])
+
+danger_cat = models["danger_cat"]
+danger_lgbm = models["danger_lgbm"]
+danger_classes = list(models["danger_classes"])
+
+
+# ==========================================
+# 2b. Blend Helper Functions
+# ==========================================
+def blend_regression_predict(cat_model, lgbm_model, features_df, stage_key, weight):
+    X_cat = prepare_features(cat_model, features_df, stage_key)
+    X_lgbm = prepare_features(lgbm_model, features_df, stage_key)
+    pred_cat = cat_model.predict(X_cat)
+    pred_lgbm = lgbm_model.predict(X_lgbm)
+    return weight * pred_cat + (1 - weight) * pred_lgbm
+
+
+def blend_binary_proba(cat_model, lgbm_model, features_df, stage_key):
+    X_cat = prepare_features(cat_model, features_df, stage_key)
+    X_lgbm = prepare_features(lgbm_model, features_df, stage_key)
+    proba_cat = cat_model.predict_proba(X_cat)[:, 1]
+    proba_lgb = lgbm_model.predict_proba(X_lgbm)[:, 1]
+    return (proba_cat + proba_lgb) / 2
+
+
+def blend_multiclass_proba(cat_model, lgb_model, features_df, stage_key, classes_order):
+    X_cat = prepare_features(cat_model, features_df, stage_key)
+    X_lgb = prepare_features(lgb_model, features_df, stage_key)
+    proba_cat = cat_model.predict_proba(X_cat)
+    proba_lgb = lgb_model.predict_proba(X_lgb)
+
+    cat_classes = list(cat_model.classes_.ravel())
+    lgb_classes = list(lgb_model.classes_)
+
+    proba_cat_df = pd.DataFrame(proba_cat, columns=cat_classes)[classes_order]
+    proba_lgb_df = pd.DataFrame(proba_lgb, columns=lgb_classes)[classes_order]
+
+    proba_blend = (proba_cat_df.values + proba_lgb_df.values) / 2
+    pred_blend = (
+        pd.Series(proba_blend.argmax(axis=1))
+        .map(dict(enumerate(classes_order)))
+        .values
+    )
+    return pred_blend, proba_blend
+
+
+def compute_danger_score(proba_row, classes_order):
+    severity_rank = {
+        "none": 0, "healthy": 0, "0": 0, "false": 0, "no": 0,
+        "low": 1, "1": 1,
+        "medium": 2, "moderate": 2, "2": 2,
+        "high": 3, "critical": 3, "severe": 3, "3": 3,
+    }
+
+    ranks = []
+    for cls in classes_order:
+        key = str(cls).strip().lower()
+        if key in severity_rank:
+            ranks.append(severity_rank[key])
+        else:
+            try:
+                ranks.append(float(cls))
+            except (TypeError, ValueError):
+                ranks.append(3)
+
+    ranks = np.asarray(ranks, dtype=float)
+    max_rank = ranks.max() if ranks.max() > 0 else 1.0
+    proba_row = np.asarray(proba_row, dtype=float)
+    return float(np.clip(np.sum(proba_row * (ranks / max_rank)), 0.0, 1.0))
 
 
 def compute_features_from_row(row):
@@ -206,7 +299,7 @@ def compute_features_from_row(row):
         else time_val
     )
 
-    hour = dt.hour + dt.minute / 60.0
+    hour = float(dt.hour)
     month = dt.month
     day_of_week = dt.dayofweek
 
@@ -217,51 +310,78 @@ def compute_features_from_row(row):
     ac_volt = float(row.get("ac_voltage", 0.0))
     dc_volt = float(row.get("dc_voltage", 0.0))
 
-    is_daylight = 1 if irradiance > 15.0 else 0
+    is_daylight = 1 if (6 <= dt.hour <= 18 or irradiance > 15.0) else 0
+    
     if is_daylight == 0:
         irradiance = 0.0
         ac_curr = 0.0
         dc_curr = 0.0
         active_power = 0.0
         dc_power = 0.0
+        ac_power = 0.0
         performance_ratio = 0.0
         inverter_efficiency = 0.0
     else:
-        dc_power = max(0.0, (dc_volt * dc_curr) / 1000.0)
         active_power = max(
             0.0,
             float(
                 row.get(
                     "active_power",
-                    (ac_volt * ac_curr) / 1000.0
+                    (ac_volt * ac_curr)
                     if ac_volt > 0 and ac_curr > 0
                     else 0.0,
                 )
             ),
         )
-        inverter_efficiency = (
-            min(100.0, (active_power / dc_power * 100.0))
-            if dc_power > 0.05
-            else 0.0
-        )
-        performance_ratio = (
-            min(1.2, max(0.0, active_power / ((irradiance / 1000.0) * 4.0)))
-            if irradiance > 50.0
-            else 0.0
+
+        dc_power = float(row.get("dc_power", dc_volt * dc_curr))
+        ac_power = float(row.get("ac_power", ac_volt * ac_curr))
+
+        if "inverter_efficiency" in row and pd.notna(row.get("inverter_efficiency")):
+            inverter_efficiency = float(row["inverter_efficiency"])
+        else:
+            inverter_efficiency = (ac_power / dc_power) if dc_power > 0 else 0.0
+        inverter_efficiency = min(1.0, max(0.0, inverter_efficiency))
+
+        if "performance_ratio" in row and pd.notna(row.get("performance_ratio")):
+            performance_ratio = float(row["performance_ratio"])
+        else:
+            performance_ratio = (
+                min(1.2, max(0.0, active_power / ((irradiance / 1000.0) * 4.0)))
+                if irradiance > 50.0
+                else 0.0
+            )
+
+    day_length_hours = float(row.get("day_length_hours", 12.0))
+
+    if "sun_elevation" in row and pd.notna(row.get("sun_elevation")):
+        sun_elevation = float(row["sun_elevation"])
+    else:
+        sun_elevation = max(
+            0.0, 90.0 * np.sin(np.pi * (hour - 6) / 12.0) if is_daylight else 0.0
         )
 
-    day_length_hours = 12.0
-    sun_elevation = max(
-        0.0, 90.0 * np.sin(np.pi * (hour - 6) / 12.0) if is_daylight else 0.0
-    )
-    sun_azimuth = (hour / 24.0) * 360.0
-    amb_temp = max(-5.0, temp - 8.0)
-    clear_sky_irradiance = max(
-        0.0, 1000.0 * np.sin(np.pi * (hour - 6) / 12.0) if is_daylight else 0.0
-    )
+    if "sun_azimuth" in row and pd.notna(row.get("sun_azimuth")):
+        sun_azimuth = float(row["sun_azimuth"])
+    else:
+        sun_azimuth = (hour / 24.0) * 360.0
+
+    if "ambient_temp" in row and pd.notna(row.get("ambient_temp")):
+        amb_temp = float(row["ambient_temp"])
+    else:
+        amb_temp = max(-5.0, temp - 8.0)
+
+    if "clear_sky_irradiance" in row and pd.notna(row.get("clear_sky_irradiance")):
+        clear_sky_irradiance = float(row["clear_sky_irradiance"])
+    else:
+        clear_sky_irradiance = max(
+            0.0, 1000.0 * np.sin(np.pi * (hour - 6) / 12.0) if is_daylight else 0.0
+        )
+
+    cloud_cover = float(row.get("cloud_cover", 0.1))
 
     module_temp = temp
-    inverter_temp = temp * 0.85 + 5.0
+    inverter_temp = float(row.get("inverter_temp", temp * 0.85 + 5.0))
 
     return pd.DataFrame(
         [
@@ -275,12 +395,12 @@ def compute_features_from_row(row):
                 "sun_elevation": float(sun_elevation),
                 "sun_azimuth": float(sun_azimuth),
                 "ambient_temp": float(amb_temp),
-                "cloud_cover": 0.1,
+                "cloud_cover": float(cloud_cover),
                 "irradiance": float(irradiance),
                 "clear_sky_irradiance": float(clear_sky_irradiance),
                 "active_power": float(active_power),
                 "dc_power": float(dc_power),
-                "ac_power": float(active_power),
+                "ac_power": float(ac_power),
                 "dc_voltage": float(dc_volt),
                 "dc_current": float(dc_curr),
                 "ac_voltage": float(ac_volt),
@@ -326,9 +446,7 @@ def prepare_features(model, features_df, stage_key):
 
 
 def scale_expected_power(raw_pred, active_power):
-    val = float(raw_pred)
-    if val > 50.0:
-        val = val / 1000.0
+    val = max(0.0, float(raw_pred))
     return max(active_power, val)
 
 
@@ -337,37 +455,48 @@ def scale_expected_power(raw_pred, active_power):
 # ==========================================
 data_source = st.sidebar.radio(
     "Data Source",
-    ["📡 Live Feed", "📝 Manual Entry", "📁 Upload CSV"],
+    ["Live Feed", "Manual Entry", "Upload CSV"],
     index=2,
 )
 st.sidebar.markdown(
     "<hr style='margin: 15px 0; opacity: 0.15;'>", unsafe_allow_html=True
 )
 
+st.sidebar.markdown("### Model Debug")
+fault_threshold = st.sidebar.slider(
+    "Fault Detection Threshold", 0.05, 0.95, 0.50, 0.05
+)
+POWER_LOSS_ALERT = st.sidebar.slider(
+    "Power Loss Alert Level (raw power units)", 10.0, 2000.0, 300.0, 10.0,
+    help="If actual power falls below expected power by at least this much, "
+         "flag it as a Performance Anomaly even if the fault model says healthy.",
+)
+show_debug = st.sidebar.checkbox("Show raw model outputs", value=False)
+
 df_uploaded = None
 
-if data_source == "📡 Live Feed":
+if data_source == "Live Feed":
     row_data = {
         "irradiance": 850.0,
         "module_temp": 42.0,
-        "ac_current": 14.3,
-        "dc_current": 9.2,
-        "ac_voltage": 230.0,
-        "dc_voltage": 375.0,
-        "active_power": 3.2,
+        "ac_current": 6.0,
+        "dc_current": 5.4,
+        "ac_voltage": 390.0,
+        "dc_voltage": 720.0,
+        "active_power": 2340.0,
         "Timestamp": datetime.now(),
     }
-elif data_source == "📝 Manual Entry":
+elif data_source == "Manual Entry":
     st.sidebar.markdown("### Manual Inputs")
     row_data = {
         "irradiance": st.sidebar.slider(
             "Irradiance (W/m²)", 0.0, 1200.0, 790.0, 10.0
         ),
         "module_temp": st.sidebar.slider("Panel Temp (°C)", 0.0, 80.0, 49.0, 1.0),
-        "ac_current": st.sidebar.slider("AC Current (A)", 0.0, 30.0, 15.3, 0.1),
-        "dc_current": st.sidebar.slider("DC Current (A)", 0.0, 30.0, 16.7, 0.1),
-        "ac_voltage": st.sidebar.slider("AC Voltage (V)", 0.0, 400.0, 219.0, 1.0),
-        "dc_voltage": st.sidebar.slider("DC Voltage (V)", 0.0, 600.0, 390.0, 1.0),
+        "ac_current": st.sidebar.slider("AC Current (A)", 0.0, 7.0, 3.5, 0.1),
+        "dc_current": st.sidebar.slider("DC Current (A)", 0.0, 6.0, 3.0, 0.1),
+        "ac_voltage": st.sidebar.slider("AC Voltage (V)", 0.0, 410.0, 350.0, 5.0),
+        "dc_voltage": st.sidebar.slider("DC Voltage (V)", 0.0, 840.0, 600.0, 5.0),
         "Timestamp": datetime.now(),
     }
 else:
@@ -378,7 +507,7 @@ else:
     if uploaded_file is not None:
         df_uploaded = pd.read_csv(uploaded_file)
         play_stream = st.sidebar.checkbox(
-            "▶ Play Timeline Minute-by-Minute", value=False
+            "Play Timeline Minute-by-Minute", value=False
         )
 
         if play_stream:
@@ -392,14 +521,14 @@ else:
 
         row_data = df_uploaded.iloc[row_idx].to_dict()
     else:
-        st.sidebar.info("الرجاء رفع ملف CSV لعرض البيانات.")
+        st.sidebar.info("Please upload a CSV file to view data.")
         row_data = {
             "irradiance": 790.0,
             "module_temp": 49.0,
-            "ac_current": 15.3,
-            "dc_current": 16.7,
-            "ac_voltage": 219.0,
-            "dc_voltage": 390.0,
+            "ac_current": 3.5,
+            "dc_current": 3.2,
+            "ac_voltage": 350.0,
+            "dc_voltage": 600.0,
             "Timestamp": datetime.now(),
         }
 
@@ -411,38 +540,35 @@ irradiance = features_df["irradiance"].values[0]
 # 4. Sequential Execution (Diagnostics)
 # ==========================================
 fault_solutions = {
-    "shading": (
-        "Check for surrounding physical obstructions, tree branches, or debris"
-        " casting shadows on the PV strings."
-    ),
-    "dust": (
-        "Schedule a panel surface cleaning to remove dust and dirt accumulation"
-        " reducing efficiency."
-    ),
     "soiling": (
-        "Clean panel surfaces immediately to remove bird droppings or heavy"
-        " particulate layers."
+        "Schedule a panel surface cleaning to remove dust, dirt, or bird"
+        " droppings accumulating on the panels and reducing efficiency."
     ),
-    "inverter failure": (
-        "Inspect inverter error codes, verify grid synchronization, and check"
-        " AC/DC circuit breakers."
+    "tracker_stuck": (
+        "Inspect the solar tracker's motor, actuator, and control unit — the"
+        " tracker appears stuck and is no longer following the sun's path."
     ),
-    "string disconnect": (
-        "Inspect DC wiring, junction box connectors, and string fuses for loose"
-        " or broken paths."
+    "dc_string_outage": (
+        "Inspect DC wiring, junction box connectors, and string fuses for a"
+        " disconnected, broken, or open PV string."
     ),
-    "open circuit": (
-        "Check string cables and terminal blocks for accidental disconnection or"
-        " physical damage."
+    "inverter_overheat": (
+        "Check inverter cooling fans, ventilation paths, and ambient airflow;"
+        " consider derating output until inverter temperature drops."
     ),
-    "short circuit": (
-        "Shut down the system immediately to prevent fire hazards; inspect"
-        " damaged cables or faulty diodes."
+    "downtime": (
+        "System is reporting unexpected downtime; check inverter power and"
+        " communication status as well as the grid connection."
     ),
-    "temperature anomaly": (
-        "Check inverter cooling fans, ventilation paths, and ambient airflow to"
-        " prevent overheating."
-    ),
+}
+
+FAULT_TYPE_DISPLAY_NAMES = {
+    "healthy": "Healthy",
+    "soiling": "Soiling",
+    "tracker_stuck": "Tracker Stuck",
+    "dc_string_outage": "DC String Outage",
+    "inverter_overheat": "Inverter Overheat",
+    "downtime": "Downtime",
 }
 
 if irradiance <= 15.0:
@@ -456,37 +582,46 @@ if irradiance <= 15.0:
     fault_label = "Normal Inactive State (Night/Low Irradiance)"
     action = "System is inactive or in low-light conditions. No generation expected, no faults detected."
 else:
-    X_power = prepare_features(power_model, features_df, "power")
-    raw_exp_power = float(power_model.predict(X_power)[0])
+    raw_exp_power = float(
+        blend_regression_predict(power_cat, power_lgbm, features_df, "power", power_weight)[0]
+    )
     expected_power = scale_expected_power(raw_exp_power, active_power)
-
-    if expected_power <= active_power:
-        expected_power = active_power + ((irradiance / 1000.0) * 0.15)
-
     power_loss = max(0.0, round(expected_power - active_power, 2))
 
-    X_faulted = prepare_features(is_faulted_model, features_df, "is_faulted")
-    is_faulted = int(is_faulted_model.predict(X_faulted)[0])
+    proba_faulted_blend = blend_binary_proba(is_faulted_cat, is_faulted_lgbm, features_df, "is_faulted")
+    is_faulted = int(proba_faulted_blend[0] >= fault_threshold)
 
-    X_type = prepare_features(fault_type_model, features_df, "fault_type")
-    raw_type_pred = str(fault_type_model.predict(X_type)[0]).lower().strip()
+    if is_faulted == 1:
+        _, proba_type_blend = blend_multiclass_proba(
+            fault_type_cat, fault_type_lgbm, features_df, "fault_type", fault_type_classes
+        )
+        
+        _, proba_danger_blend = blend_multiclass_proba(
+            danger_cat, danger_lgbm, features_df, "danger", danger_classes
+        )
+        danger_score = compute_danger_score(proba_danger_blend[0], danger_classes)
 
-    X_danger = prepare_features(danger_model, features_df, "danger")
-    if hasattr(danger_model, "predict_proba"):
-        probs = danger_model.predict_proba(X_danger)[0]
-        danger_score = float(probs[1] if len(probs) > 1 else probs[0])
+        type_probs = dict(zip(fault_type_classes, proba_type_blend[0]))
+        filtered_types = {k: v for k, v in type_probs.items() if str(k).lower() != "healthy"}
+        
+        if filtered_types:
+            raw_type_pred = max(filtered_types, key=filtered_types.get)
+        else:
+            raw_type_pred = max(type_probs, key=type_probs.get)
     else:
-        danger_score = float(danger_model.predict(X_danger)[0])
+        raw_type_pred = "healthy"
+        danger_score = 0.0
 
-    if is_faulted == 0 or raw_type_pred == "healthy" or power_loss < 0.15:
-        status, status_color = "Healthy", "#10b981"
-        sev_label, sev_color = "Low", "#10b981"
-        danger_score = min(danger_score, 0.15)
-        fault_label = "Healthy System (Normal)"
-        action = "System operates within optimal parameters. Regular monitoring is sufficient; no immediate physical inspection required."
-    else:
+    is_flagged_by_models = is_faulted == 1
+    is_flagged_by_power_loss = power_loss >= POWER_LOSS_ALERT
+
+    if is_flagged_by_models:
         status, status_color = "Fault Detected", "#ef4444"
-        fault_label = raw_type_pred.title()
+        
+        fault_label = FAULT_TYPE_DISPLAY_NAMES.get(
+            str(raw_type_pred), str(raw_type_pred).replace("_", " ").title()
+        )
+            
         if danger_score >= 0.75:
             sev_label, sev_color = "Critical", "#dc2626"
         elif danger_score >= 0.45:
@@ -497,13 +632,43 @@ else:
             sev_label, sev_color = "Low", "#10b981"
 
         action = fault_solutions.get(
-            raw_type_pred,
+            str(raw_type_pred),
             "Perform a comprehensive on-site inspection of the PV strings, check"
             " electrical connections, and review inverter status.",
         )
+    elif is_flagged_by_power_loss:
+        status, status_color = "Performance Anomaly", "#f59e0b"
+        sev_label, sev_color = "Medium", "#f59e0b"
+        danger_score = max(danger_score, 0.25)
+        fault_label = "Unexplained Power Loss (Performance Drop)"
+        action = (
+            f"Actual power is {power_loss:.2f} kW below the model's expected power, "
+            "but the fault-detection model did not cross its confidence threshold. "
+            "Worth a manual check: irradiance sensor accuracy, partial shading, or "
+            "soiling that the model may be under-confident about."
+        )
+    else:
+        status, status_color = "Healthy", "#10b981"
+        sev_label, sev_color = "Low", "#10b981"
+        danger_score = min(danger_score, 0.15)
+        fault_label = "Healthy System (Normal)"
+        action = "System operates within optimal parameters. Regular monitoring is sufficient; no immediate physical inspection required."
 
 efficiency = features_df["inverter_efficiency"].values[0]
-eff_text = "N/A (Night)" if irradiance <= 15.0 else f"{efficiency:.1f}%"
+eff_text = "N/A (Night)" if irradiance <= 15.0 else f"{efficiency*100:.1f}%"
+
+if show_debug:
+    with st.expander("🔧 Raw model outputs (debug)", expanded=True):
+        st.write("**Computed features fed to the models:**")
+        st.dataframe(features_df)
+        if irradiance > 15.0:
+            st.write(f"**is_faulted blend probability:** `{proba_faulted_blend[0]:.4f}`  (threshold = `{fault_threshold}`)")
+            st.write(f"**raw expected_power (blend, unscaled):** `{raw_exp_power:.4f}`")
+            st.write(f"**expected_power (final):** `{expected_power:.4f}` kW  |  **active_power:** `{active_power:.4f}` kW  |  **power_loss:** `{power_loss:.4f}` kW")
+            st.write(f"**raw_type_pred (blend):** `{raw_type_pred}`")
+            st.write(f"**danger_score (blend):** `{danger_score:.4f}`")
+        else:
+            st.info("Irradiance ≤ 15 W/m² → night/low-sun branch, models are skipped entirely.")
 
 # ==========================================
 # 5. UI Layout & KPI Cards
@@ -527,7 +692,7 @@ k3.markdown(
     unsafe_allow_html=True,
 )
 k4.markdown(
-    f'<div class="kpi-card"><div class="kpi-title">Power Loss</div><div class="kpi-value" style="color:{"#10b981" if power_loss <= 0.2 else "#ef4444"};">{power_loss:.2f} kW</div></div>',
+    f'<div class="kpi-card"><div class="kpi-title">Power Loss</div><div class="kpi-value" style="color:{"#10b981" if power_loss <= 15.0 else "#ef4444"};">{power_loss:.1f}</div></div>',
     unsafe_allow_html=True,
 )
 k5.markdown(
@@ -551,7 +716,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Sensors Grid
 st.markdown("**Live Sensor Metrics (Selected Row)**")
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 c1.markdown(
@@ -592,7 +756,7 @@ c6.markdown(
 )
 
 # ==========================================
-# 6. Charts Generation (Progressive / Full Timeline)
+# 6. Charts Generation
 # ==========================================
 chart_config = {"displayModeBar": False, "scrollZoom": False}
 col_left, col_right = st.columns(2)
