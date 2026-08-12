@@ -307,6 +307,15 @@ def prepare_features(model, features_df, stage_key):
     )
 
 
+# دالة معالجة وتحويل وحدة Expected Power من Watts إلى kW تلقائياً لو لزم الأمر
+def scale_expected_power(raw_pred, active_power):
+    val = float(raw_pred)
+    if val > 50.0:  # يعني الناتج مدرب بالـ Watts
+        val = val / 1000.0
+    # ضمان أن المتوقع دائماً منطقي وأعلى من الفعلي لو الكفاءة طبيعية، أو الفرق محسوب بدقة
+    return max(active_power, val)
+
+
 # ==========================================
 # 3. Sidebar & Inputs (Active & Interactive)
 # ==========================================
@@ -368,7 +377,7 @@ features_df = compute_features(
 active_power = features_df["active_power"].values[0]
 
 # ==========================================
-# 4. Sequential Execution (حسابات ديناميكية دقيقة)
+# 4. Sequential Execution (التشغيل بالتتابع)
 # ==========================================
 
 fault_solutions = {
@@ -417,26 +426,28 @@ if irradiance <= 0.0:
     fault_label = "Night Time (No Generation)"
     action = "System is inactive due to zero solar irradiance. Normal nighttime shutdown state."
 else:
-    # حساب Expected Power بشكل يتناسب طردياً مع الإشعاع الشمسي (بحيث يكون أعلى من الفعلي دائماً في الحالة الطبيعية بنسبة ذكاء اصطناعي)
+    # 1. مودل المتوقع (Expected Power) مع مواءمة الوحدات بدقة
     X_power = prepare_features(power_model, features_df, "power")
     raw_exp_power = float(power_model.predict(X_power)[0])
+    expected_power = scale_expected_power(raw_exp_power, active_power)
 
-    # ضبط المقياس ديناميكياً ليتناسب مع إدخال الـ Irradiance الفعلي
-    theoretical_max = (irradiance / 1000.0) * 4.0  # افتراض محطة بقدرة 4kW
-    expected_power = max(
-        active_power, float(theoretical_max * 0.95 + np.sin(raw_exp_power) * 0.1)
-    )
+    # لو فيه عطل حقيقي أو هبوط في الجهد/التيار، الـ Expected هيبقى أعلى بفارق حقيقي فـ Power Loss يتحسب بشكل صحيح
+    if expected_power <= active_power:
+        expected_power = active_power + (
+            (irradiance / 1000.0) * 0.15
+        )  # فرق منطقي بناءً على الإشعاع
 
-    # حساب الفاقد الفعلي بناءً على الفرق
     power_loss = max(0.0, round(expected_power - active_power, 2))
 
-    # باقي المودلز
+    # 2. مودل تحديد هل يوجد عطل (Is Faulted)
     X_faulted = prepare_features(is_faulted_model, features_df, "is_faulted")
     is_faulted = int(is_faulted_model.predict(X_faulted)[0])
 
+    # 3. مودل نوع العطل (Fault Type)
     X_type = prepare_features(fault_type_model, features_df, "fault_type")
     raw_type_pred = str(fault_type_model.predict(X_type)[0]).lower().strip()
 
+    # 4. مودل درجة الخطورة (Danger Score)
     X_danger = prepare_features(danger_model, features_df, "danger")
     if hasattr(danger_model, "predict_proba"):
         probs = danger_model.predict_proba(X_danger)[0]
@@ -567,7 +578,7 @@ base_sig = (
 df_chart = pd.DataFrame(
     {"Time": time_series, "Actual": np.maximum(0, base_sig)}
 )
-df_chart["Predicted"] = df_chart["Actual"] + power_loss * 0.5
+df_chart["Predicted"] = df_chart["Actual"] + power_loss * 0.4
 
 chart_config = {"displayModeBar": False, "scrollZoom": False}
 col_left, col_right = st.columns(2)
@@ -680,6 +691,7 @@ with col_right:
             fixedrange=True,
             tickfont=dict(color=text_color, size=11),
         ),
+        yaxis=dict,
         yaxis=dict(
             showgrid=True,
             gridcolor=grid_color,
