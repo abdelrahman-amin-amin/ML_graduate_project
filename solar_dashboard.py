@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import streamlit.components.v1 as components
 
 # 1. Page Configuration
 st.set_page_config(
@@ -11,47 +10,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# ----------------------------------------------------
-# إصلاح مشكلة Google Chrome جذرياً (إيقاف الترجمة التلقائية وإجبار LTR)
-# ----------------------------------------------------
-components.html(
-    """
-    <script>
-        // إضافة Meta Tag لمنع Google Translate في كروم من العبث باتجاه السلايدر
-        var head = window.parent.document.getElementsByTagName('head')[0];
-        var meta = window.parent.document.createElement('meta');
-        meta.name = 'google';
-        meta.content = 'notranslate';
-        head.appendChild(meta);
-        
-        // تثبيت الاتجاه واللغة على مستوى الصفحة الأساسية
-        window.parent.document.documentElement.setAttribute('dir', 'ltr');
-        window.parent.document.documentElement.setAttribute('lang', 'en');
-        window.parent.document.body.classList.add('notranslate');
-    </script>
-    """,
-    height=0,
-    width=0,
-)
-
-# ----------------------------------------------------
-# فحص المتصفح ومنع التشغيل إلا على Microsoft Edge (اختياري)
-# ----------------------------------------------------
-try:
-    # جلب User-Agent بطريقة آمنة لتفادي أخطاء الإصدارات القديمة
-    headers = getattr(st, "context", None)
-    user_agent = ""
-    if headers and hasattr(headers, "headers"):
-        user_agent = headers.headers.get("User-Agent", "").lower()
-
-    # إذا أردت تفعيل كود الحظر لـ Edge فقط، قم بإلغاء التهميش عن السطور التالية:
-    # if "edg" not in user_agent and user_agent != "":
-    #     st.error("⚠️ هذا التطبيق يدعم متصفح Microsoft Edge فقط.")
-    #     st.stop()
-except Exception:
-    pass
-# ----------------------------------------------------
 
 # 2. Sidebar Control & Theme Toggle
 st.sidebar.title("Control Panel")
@@ -81,13 +39,10 @@ else:
 st.markdown(
     f"""
     <style>
-    html, body, [data-testid="stAppViewContainer"], .stApp {{
-        direction: ltr !important;
-        text-align: left !important;
+    .stApp {{
         background-color: {bg_app};
         color: {text_color};
     }}
-
     header[data-testid="stHeader"] {{
         background-color: transparent !important;
     }}
@@ -95,15 +50,6 @@ st.markdown(
         padding-top: 2.5rem !important;
         padding-bottom: 1.5rem;
     }}
-    
-    /* إصلاح السلايدر بشكل كامل */
-    div[data-testid="stSlider"],
-    div[data-baseweb="slider"],
-    div[data-baseweb="slider"] *,
-    div[role="slider"] {{
-        direction: ltr !important;
-    }}
-
     .sensor-card {{
         background: {card_bg};
         border-radius: 14px;
@@ -173,6 +119,7 @@ def render_sensor_card(title, value, unit, color="#3b82f6"):
 
 
 def generate_realistic_solar_profile(time_series, max_power):
+    """دالة حساب منحنى التوليد الشمسي الواقعي"""
     ts = (
         pd.Series(time_series)
         if isinstance(time_series, pd.DatetimeIndex)
@@ -192,6 +139,7 @@ data_source = st.sidebar.radio(
     "Data Source:", ["Live Feed", "Manual Entry", "Upload CSV"]
 )
 
+# Default Metric Values (تنسيق قيم التيار والجهد لتوفير كفاءة ~95.4%)
 ac_curr, dc_curr = 14.3, 9.2
 ac_volt, dc_volt = 230.0, 375.0
 irradiance, temp = 850.0, 42.0
@@ -201,40 +149,23 @@ df_chart = pd.DataFrame()
 # Mode A: Manual Entry
 if data_source == "Manual Entry":
     st.sidebar.subheader("Sensor Inputs")
-    irradiance = float(
-        st.sidebar.slider(
-            "Irradiance (W/m²)", 0, 1200, 850, key="irr_slider"
-        )
-    )
-    temp = float(
-        st.sidebar.slider("Panel Temp (°C)", -10, 85, 42, key="temp_slider")
-    )
+    irradiance = float(st.sidebar.slider("Irradiance (W/m²)", 0, 1200, 850))
+    temp = float(st.sidebar.slider("Panel Temp (°C)", -10, 85, 42))
 
     irr_factor = irradiance / 1000.0
 
+    # القيم المحسوبة تلقائياً تحافظ على كفاءة الـ Inverter العالية
     dc_curr = st.sidebar.number_input(
-        "DC Current (A)",
-        value=round(9.2 * irr_factor, 2),
-        step=0.1,
-        key="dc_curr_input",
+        "DC Current (A)", value=round(9.2 * irr_factor, 2), step=0.1
     )
     ac_curr = st.sidebar.number_input(
-        "AC Current (A)",
-        value=round(14.3 * irr_factor, 2),
-        step=0.1,
-        key="ac_curr_input",
+        "AC Current (A)", value=round(14.3 * irr_factor, 2), step=0.1
     )
     dc_volt = st.sidebar.number_input(
-        "DC Voltage (V)",
-        value=375.0 if irradiance > 0 else 0.0,
-        step=1.0,
-        key="dc_volt_input",
+        "DC Voltage (V)", value=375.0 if irradiance > 0 else 0.0, step=1.0
     )
     ac_volt = st.sidebar.number_input(
-        "AC Voltage (V)",
-        value=230.0 if irradiance > 0 else 0.0,
-        step=1.0,
-        key="ac_volt_input",
+        "AC Voltage (V)", value=230.0 if irradiance > 0 else 0.0, step=1.0
     )
 
     st.sidebar.subheader("Time Settings")
@@ -273,6 +204,7 @@ elif data_source == "Upload CSV":
         try:
             df_raw = pd.read_csv(uploaded_file)
             cols = {str(c).lower().strip(): c for c in df_raw.columns}
+
             last_row = df_raw.iloc[-1]
 
             def extract_val(possible_keys, default_val):
@@ -376,6 +308,7 @@ elif data_source == "Upload CSV":
         except Exception as e:
             st.sidebar.error(f"Error reading CSV: {e}")
 
+# Mode C: Live Feed Simulation Default
 if df_chart.empty:
     time_series = pd.date_range(
         start=datetime.now().replace(hour=0, minute=0, second=0),
@@ -383,10 +316,12 @@ if df_chart.empty:
         freq="15min",
     )
     base_signal = generate_realistic_solar_profile(time_series, max_power=3.29)
+
     np.random.seed(42)
     noise = np.where(
         base_signal > 0, np.random.normal(0, 0.03, len(time_series)), 0.0
     )
+
     df_chart = pd.DataFrame(
         {
             "Time": time_series,
@@ -395,7 +330,7 @@ if df_chart.empty:
         }
     )
 
-# 5. Dynamic Metrics
+# 5. Dynamic Metrics & Night Standby Detection Logic
 p_dc_kw = (dc_volt * dc_curr) / 1000.0
 p_ac_kw = (ac_volt * ac_curr) / 1000.0
 power_loss_kw = max(0.0, p_dc_kw - p_ac_kw)
@@ -485,13 +420,15 @@ with col_s6:
         unsafe_allow_html=True,
     )
 
-# 8. Visualizations
+# 8. Interactive Visualizations
 chart_config = {"displayModeBar": False, "scrollZoom": False}
 col_left, col_right = st.columns(2)
 
+# Chart A: Line Chart
 with col_left:
     st.markdown("**Actual vs Predicted Power Output**")
     fig_line = go.Figure()
+
     fig_line.add_trace(
         go.Scatter(
             x=df_chart["Time"],
@@ -501,6 +438,7 @@ with col_left:
             line=dict(color="#3b82f6", width=2.5, shape="spline"),
         )
     )
+
     fig_line.add_trace(
         go.Scatter(
             x=df_chart["Time"],
@@ -510,6 +448,7 @@ with col_left:
             line=dict(color="#f97316", width=2, dash="dot", shape="spline"),
         )
     )
+
     fig_line.update_layout(
         template=plotly_template,
         paper_bgcolor=card_bg,
@@ -543,14 +482,18 @@ with col_left:
     )
     st.plotly_chart(fig_line, use_container_width=True, config=chart_config)
 
+# Chart B: Bar Chart (Daily Aggregated)
 with col_right:
     st.markdown("**Generation vs Lost Power (Daily Aggregated)**")
+
     df_chart["Day"] = df_chart["Time"].dt.strftime("%a %d/%m")
+
     daily_summary = (
         df_chart.groupby("Day", sort=False)[["Actual", "Predicted"]]
         .sum()
         .reset_index()
     )
+
     daily_summary["Lost"] = np.maximum(
         0, daily_summary["Predicted"] - daily_summary["Actual"]
     )
@@ -574,6 +517,7 @@ with col_right:
             marker_cornerradius=6,
         )
     )
+
     fig_bar.update_layout(
         template=plotly_template,
         paper_bgcolor=card_bg,
