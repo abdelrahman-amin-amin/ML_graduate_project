@@ -35,18 +35,14 @@ else:
     plotly_template = "plotly_white"
     grid_color = "#e2e8f0"
 
-# 3. Custom CSS Styles (حل مشكلة Google Chrome)
+# 3. Custom CSS Styles
 st.markdown(
     f"""
     <style>
-    /* إجبار التطبيق والمصفح بالكامل على الاتجاه من اليسار لليمين LTR */
-    html, body, [data-testid="stAppViewContainer"], .stApp {{
-        direction: ltr !important;
-        text-align: left !important;
+    .stApp {{
         background-color: {bg_app};
         color: {text_color};
     }}
-
     header[data-testid="stHeader"] {{
         background-color: transparent !important;
     }}
@@ -54,15 +50,6 @@ st.markdown(
         padding-top: 2.5rem !important;
         padding-bottom: 1.5rem;
     }}
-    
-    /* إصلاح اتجاه السلايدر وعناصره الداخلية لمنع انعكاس القيم في كرووم */
-    div[data-testid="stSlider"],
-    div[data-baseweb="slider"],
-    div[data-baseweb="slider"] *,
-    div[role="slider"] {{
-        direction: ltr !important;
-    }}
-
     .sensor-card {{
         background: {card_bg};
         border-radius: 14px;
@@ -152,7 +139,7 @@ data_source = st.sidebar.radio(
     "Data Source:", ["Live Feed", "Manual Entry", "Upload CSV"]
 )
 
-# Default Metric Values
+# Default Metric Values (تنسيق قيم التيار والجهد لتوفير كفاءة ~95.4%)
 ac_curr, dc_curr = 14.3, 9.2
 ac_volt, dc_volt = 230.0, 375.0
 irradiance, temp = 850.0, 42.0
@@ -162,40 +149,23 @@ df_chart = pd.DataFrame()
 # Mode A: Manual Entry
 if data_source == "Manual Entry":
     st.sidebar.subheader("Sensor Inputs")
-    irradiance = float(
-        st.sidebar.slider(
-            "Irradiance (W/m²)", 0, 1200, 850, key="irr_slider"
-        )
-    )
-    temp = float(
-        st.sidebar.slider("Panel Temp (°C)", -10, 85, 42, key="temp_slider")
-    )
+    irradiance = float(st.sidebar.slider("Irradiance (W/m²)", 0, 1200, 850))
+    temp = float(st.sidebar.slider("Panel Temp (°C)", -10, 85, 42))
 
     irr_factor = irradiance / 1000.0
 
+    # القيم المحسوبة تلقائياً تحافظ على كفاءة الـ Inverter العالية
     dc_curr = st.sidebar.number_input(
-        "DC Current (A)",
-        value=round(9.2 * irr_factor, 2),
-        step=0.1,
-        key="dc_curr_input",
+        "DC Current (A)", value=round(9.2 * irr_factor, 2), step=0.1
     )
     ac_curr = st.sidebar.number_input(
-        "AC Current (A)",
-        value=round(14.3 * irr_factor, 2),
-        step=0.1,
-        key="ac_curr_input",
+        "AC Current (A)", value=round(14.3 * irr_factor, 2), step=0.1
     )
     dc_volt = st.sidebar.number_input(
-        "DC Voltage (V)",
-        value=375.0 if irradiance > 0 else 0.0,
-        step=1.0,
-        key="dc_volt_input",
+        "DC Voltage (V)", value=375.0 if irradiance > 0 else 0.0, step=1.0
     )
     ac_volt = st.sidebar.number_input(
-        "AC Voltage (V)",
-        value=230.0 if irradiance > 0 else 0.0,
-        step=1.0,
-        key="ac_volt_input",
+        "AC Voltage (V)", value=230.0 if irradiance > 0 else 0.0, step=1.0
     )
 
     st.sidebar.subheader("Time Settings")
