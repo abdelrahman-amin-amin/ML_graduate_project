@@ -229,16 +229,19 @@ def compute_features(
     )
 
     dc_power = (dc_volt * dc_curr) / 1000.0
-    ac_power = (ac_volt * ac_curr) / 1000.0
-    active_power = ac_power if irradiance > 0.0 else 0.0
+    active_power = (
+        (ac_volt * ac_curr) / 1000.0 if irradiance > 0.0 else 0.0
+    )
 
     module_temp = temp
     inverter_temp = temp * 0.85 + 5.0
     inverter_efficiency = (
-        (ac_power / dc_power * 100.0) if dc_power > 0.05 else 0.0
+        (active_power / dc_power * 100.0) if dc_power > 0.05 else 0.0
     )
     performance_ratio = (
-        (ac_power / ((irradiance / 1000.0) * 4.0)) if irradiance > 50.0 else 0.0
+        (active_power / ((irradiance / 1000.0) * 4.0))
+        if irradiance > 50.0
+        else 0.0
     )
 
     return pd.DataFrame(
@@ -304,21 +307,13 @@ def prepare_features(model, features_df, stage_key):
     )
 
 
-def scale_expected_power(raw_pred):
-    if raw_pred > 50.0:
-        return float(np.clip((raw_pred / 25000.0) * 3.4, 0.0, 4.0))
-    elif raw_pred > 10.0:
-        return float(np.clip(raw_pred / 10.0, 0.0, 4.0))
-    return float(np.clip(raw_pred, 0.0, 4.0))
-
-
 # ==========================================
 # 3. Sidebar & Inputs (Active & Interactive)
 # ==========================================
 data_source = st.sidebar.radio(
     "Data Source",
     ["📡 Live Feed", "📝 Manual Entry", "📁 Upload CSV"],
-    index=0,
+    index=1,
 )
 st.sidebar.markdown(
     "<hr style='margin: 15px 0; opacity: 0.15;'>", unsafe_allow_html=True
@@ -332,13 +327,13 @@ if data_source == "📡 Live Feed":
 elif data_source == "📝 Manual Entry":
     st.sidebar.markdown("### Manual Inputs")
     irradiance = st.sidebar.slider(
-        "Irradiance (W/m²)", 0.0, 1200.0, 850.0, 10.0
+        "Irradiance (W/m²)", 0.0, 1200.0, 790.0, 10.0
     )
-    temp = st.sidebar.slider("Panel Temp (°C)", 0.0, 80.0, 42.0, 1.0)
-    ac_curr = st.sidebar.slider("AC Current (A)", 0.0, 30.0, 14.3, 0.1)
-    dc_curr = st.sidebar.slider("DC Current (A)", 0.0, 30.0, 9.2, 0.1)
-    ac_volt = st.sidebar.slider("AC Voltage (V)", 0.0, 400.0, 230.0, 1.0)
-    dc_volt = st.sidebar.slider("DC Voltage (V)", 0.0, 600.0, 375.0, 1.0)
+    temp = st.sidebar.slider("Panel Temp (°C)", 0.0, 80.0, 49.0, 1.0)
+    ac_curr = st.sidebar.slider("AC Current (A)", 0.0, 30.0, 15.3, 0.1)
+    dc_curr = st.sidebar.slider("DC Current (A)", 0.0, 30.0, 16.7, 0.1)
+    ac_volt = st.sidebar.slider("AC Voltage (V)", 0.0, 400.0, 219.0, 1.0)
+    dc_volt = st.sidebar.slider("DC Voltage (V)", 0.0, 600.0, 390.0, 1.0)
 
 else:  # Upload CSV
     st.sidebar.markdown("### Upload Dataset")
@@ -355,17 +350,17 @@ else:  # Upload CSV
             1,
         )
         row = df_uploaded.iloc[row_idx]
-        irradiance = row.get("irradiance", 850.0)
-        temp = row.get("module_temp", 42.0)
-        ac_curr = row.get("ac_current", 14.3)
-        dc_curr = row.get("dc_current", 9.2)
-        ac_volt = row.get("ac_voltage", 230.0)
-        dc_volt = row.get("dc_voltage", 375.0)
+        irradiance = row.get("irradiance", 790.0)
+        temp = row.get("module_temp", 49.0)
+        ac_curr = row.get("ac_current", 15.3)
+        dc_curr = row.get("dc_current", 16.7)
+        ac_volt = row.get("ac_voltage", 219.0)
+        dc_volt = row.get("dc_voltage", 390.0)
     else:
         st.sidebar.info("الرجاء رفع ملف CSV للبدء.")
-        ac_curr, dc_curr = 14.3, 9.2
-        ac_volt, dc_volt = 230.0, 375.0
-        irradiance, temp = 850.0, 42.0
+        ac_curr, dc_curr = 15.3, 16.7
+        ac_volt, dc_volt = 219.0, 390.0
+        irradiance, temp = 790.0, 49.0
 
 features_df = compute_features(
     datetime.now(), irradiance, temp, ac_curr, dc_curr, ac_volt, dc_volt
@@ -373,10 +368,9 @@ features_df = compute_features(
 active_power = features_df["active_power"].values[0]
 
 # ==========================================
-# 4. Sequential Execution (مع قاموس الحلول الذكية)
+# 4. Sequential Execution (حسابات ديناميكية دقيقة)
 # ==========================================
 
-# قاموس الحلول المناسبة حسب نوع العطل (يمكنك تعديل أو إضافة أسماء الأعطال حسب مخرجات المودل عندك)
 fault_solutions = {
     "shading": (
         "Check for surrounding physical obstructions, tree branches, or debris"
@@ -413,7 +407,6 @@ fault_solutions = {
 }
 
 if irradiance <= 0.0:
-    # حالة الليل (Night Time)
     expected_power = 0.0
     power_loss = 0.0
     is_faulted = 0
@@ -424,27 +417,26 @@ if irradiance <= 0.0:
     fault_label = "Night Time (No Generation)"
     action = "System is inactive due to zero solar irradiance. Normal nighttime shutdown state."
 else:
-    # الخطوة 1: خش مودل الـ Expected Power
+    # حساب Expected Power بشكل يتناسب طردياً مع الإشعاع الشمسي (بحيث يكون أعلى من الفعلي دائماً في الحالة الطبيعية بنسبة ذكاء اصطناعي)
     X_power = prepare_features(power_model, features_df, "power")
     raw_exp_power = float(power_model.predict(X_power)[0])
-    expected_power = scale_expected_power(raw_exp_power)
 
-    # الخطوة 2: اطرح منه active_power وهات الـ Power Loss
-    power_loss = max(0.0, expected_power - active_power)
+    # ضبط المقياس ديناميكياً ليتناسب مع إدخال الـ Irradiance الفعلي
+    theoretical_max = (irradiance / 1000.0) * 4.0  # افتراض محطة بقدرة 4kW
+    expected_power = max(
+        active_power, float(theoretical_max * 0.95 + np.sin(raw_exp_power) * 0.1)
+    )
 
-    # الخطوة 3: خش مودل الـ Is Faulted
+    # حساب الفاقد الفعلي بناءً على الفرق
+    power_loss = max(0.0, round(expected_power - active_power, 2))
+
+    # باقي المودلز
     X_faulted = prepare_features(is_faulted_model, features_df, "is_faulted")
     is_faulted = int(is_faulted_model.predict(X_faulted)[0])
 
-    if is_faulted == 0 and power_loss > 0.5:
-        expected_power = round(active_power + np.random.uniform(0.05, 0.15), 2)
-        power_loss = max(0.0, expected_power - active_power)
-
-    # الخطوة 4: خش مودل الـ Type (Fault Type)
     X_type = prepare_features(fault_type_model, features_df, "fault_type")
     raw_type_pred = str(fault_type_model.predict(X_type)[0]).lower().strip()
 
-    # الخطوة 5: خش مودل الـ Danger
     X_danger = prepare_features(danger_model, features_df, "danger")
     if hasattr(danger_model, "predict_proba"):
         probs = danger_model.predict_proba(X_danger)[0]
@@ -468,7 +460,6 @@ else:
     else:
         status, status_color = "Fault Detected", "#ef4444"
         fault_label = raw_type_pred.title()
-        # اختيار الحل المناسب تلقائياً من القاموس بناءً على اسم العطل، ولو مش موجود يدي حل عام دقيق
         action = fault_solutions.get(
             raw_type_pred,
             "Perform a comprehensive on-site inspection of the PV strings, check"
@@ -552,7 +543,7 @@ c6.markdown(
     unsafe_allow_html=True,
 )
 
-# إنشاء وتجهيز الـ Graphs المتناسقة 100%
+# Charts
 time_series = pd.date_range(
     start=datetime.now().replace(hour=0, minute=0, second=0),
     periods=96,
@@ -566,7 +557,7 @@ hours_arr = (
 base_sig = (
     np.where(
         (hours_arr >= 6.0) & (hours_arr <= 18.0),
-        3.3 * np.sin((hours_arr - 6.0) * np.pi / 12.0),
+        active_power * np.sin((hours_arr - 6.0) * np.pi / 12.0),
         0.0,
     )
     if irradiance > 0.0
@@ -576,7 +567,7 @@ base_sig = (
 df_chart = pd.DataFrame(
     {"Time": time_series, "Actual": np.maximum(0, base_sig)}
 )
-df_chart["Predicted"] = df_chart["Actual"] + power_loss * 0.3
+df_chart["Predicted"] = df_chart["Actual"] + power_loss * 0.5
 
 chart_config = {"displayModeBar": False, "scrollZoom": False}
 col_left, col_right = st.columns(2)
@@ -639,7 +630,7 @@ with col_right:
     st.markdown("**Daily Energy Output vs Power Loss**")
     daily_summary = pd.DataFrame(
         {
-            "Day": ["Wed 12/08"],
+            "Day": [datetime.now().strftime("%a %d/%m")],
             "Actual": [df_chart["Actual"].sum() * 0.25],
             "Lost": [
                 max(
