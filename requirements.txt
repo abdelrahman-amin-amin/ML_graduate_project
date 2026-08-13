@@ -7,3 +7,4 @@ scikit-learn>=1.0.0
 lightgbm>=3.3.0
 datetime 
 zipfile
+requests
