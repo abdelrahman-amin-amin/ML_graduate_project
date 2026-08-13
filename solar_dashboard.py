@@ -6,8 +6,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import zipfile
-import requests
 
 # ==========================================
 # 1. Page Configuration & Dynamic CSS
@@ -127,16 +125,17 @@ def render_sensor_card(title, value, unit, color="#3b82f6"):
 # ==========================================
 # 2. ML Engine & Models Loading (Blend: CatBoost + LightGBM)
 # ==========================================
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "saved_models")
 
+# Automatic model download from GitHub Release to handle LFS limitations on deployment servers
 RELEASE_ZIP_URL = "https://github.com/abdelrahman-amin-amin/ML_graduate_project/releases/download/v1.0/saved_models.zip"
 
 def ensure_models_exist():
     os.makedirs(MODELS_DIR, exist_ok=True)
     test_model_path = os.path.join(MODELS_DIR, "cat_reg_m1.pkl")
     
+    # If the file doesn't exist or is too small (empty LFS pointer), download it automatically
     if not os.path.exists(test_model_path) or os.path.getsize(test_model_path) < 2000:
         with st.spinner("🔄 Downloading AI models, please wait..."):
             try:
@@ -332,23 +331,27 @@ def compute_features_from_row(row):
 
     irradiance = float(row.get("irradiance", 0.0))
     temp = float(row.get("module_temp", row.get("temp", 25.0)))
-    ac_curr = float(row.get("ac_current", 0.0))
-    dc_curr = float(row.get("dc_current", 0.0))
-    ac_volt = float(row.get("ac_voltage", 0.0))
-    dc_volt = float(row.get("dc_voltage", 0.0))
 
+    # تحديد هل هو نهار أم ليل بناءً على الـ Irradiance أو الوقت
     is_daylight = 1 if (6 <= dt.hour <= 18 or irradiance > 15.0) else 0
-    
-    if is_daylight == 0:
+
+    if is_daylight == 0 or irradiance <= 15.0:
         irradiance = 0.0
         ac_curr = 0.0
         dc_curr = 0.0
+        ac_volt = 0.0
+        dc_volt = 0.0
         active_power = 0.0
         dc_power = 0.0
         ac_power = 0.0
         performance_ratio = 0.0
         inverter_efficiency = 0.0
     else:
+        ac_curr = float(row.get("ac_current", 0.0))
+        dc_curr = float(row.get("dc_current", 0.0))
+        ac_volt = float(row.get("ac_voltage", 0.0))
+        dc_volt = float(row.get("dc_voltage", 0.0))
+
         active_power = max(
             0.0,
             float(
@@ -517,13 +520,13 @@ elif data_source == "Manual Entry":
     st.sidebar.markdown("### Manual Inputs")
     row_data = {
         "irradiance": st.sidebar.slider(
-            "Irradiance (W/m²)", 0.0, 1200.0, 790.0, 10.0
+            "Irradiance (W/m²)", 0.0, 1200.0, 0.0, 10.0
         ),
-        "module_temp": st.sidebar.slider("Panel Temp (°C)", 0.0, 80.0, 49.0, 1.0),
-        "ac_current": st.sidebar.slider("AC Current (A)", 0.0, 7.0, 3.5, 0.1),
-        "dc_current": st.sidebar.slider("DC Current (A)", 0.0, 6.0, 3.0, 0.1),
-        "ac_voltage": st.sidebar.slider("AC Voltage (V)", 0.0, 410.0, 350.0, 5.0),
-        "dc_voltage": st.sidebar.slider("DC Voltage (V)", 0.0, 840.0, 600.0, 5.0),
+        "module_temp": st.sidebar.slider("Panel Temp (°C)", 0.0, 80.0, 25.0, 1.0),
+        "ac_current": st.sidebar.slider("AC Current (A)", 0.0, 7.0, 0.0, 0.1),
+        "dc_current": st.sidebar.slider("DC Current (A)", 0.0, 6.0, 0.0, 0.1),
+        "ac_voltage": st.sidebar.slider("AC Voltage (V)", 0.0, 410.0, 0.0, 5.0),
+        "dc_voltage": st.sidebar.slider("DC Voltage (V)", 0.0, 840.0, 0.0, 5.0),
         "Timestamp": datetime.now(),
     }
 else:
@@ -550,12 +553,12 @@ else:
     else:
         st.sidebar.info("Please upload a CSV file to view data.")
         row_data = {
-            "irradiance": 790.0,
-            "module_temp": 49.0,
-            "ac_current": 3.5,
-            "dc_current": 3.2,
-            "ac_voltage": 350.0,
-            "dc_voltage": 600.0,
+            "irradiance": 0.0,
+            "module_temp": 25.0,
+            "ac_current": 0.0,
+            "dc_current": 0.0,
+            "ac_voltage": 0.0,
+            "dc_voltage": 0.0,
             "Timestamp": datetime.now(),
         }
 
@@ -747,43 +750,43 @@ st.markdown("**Live Sensor Metrics (Selected Row)**")
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 c1.markdown(
     render_sensor_card(
-        "AC Current", row_data.get("ac_current", 0), "A", "#3b82f6"
+        "AC Current", features_df["ac_current"].values[0], "A", "#3b82f6"
     ),
     unsafe_allow_html=True,
 )
 c2.markdown(
     render_sensor_card(
-        "DC Current", row_data.get("dc_current", 0), "A", "#38bdf8"
+        "DC Current", features_df["dc_current"].values[0], "A", "#38bdf8"
     ),
     unsafe_allow_html=True,
 )
 c3.markdown(
     render_sensor_card(
-        "AC Voltage", row_data.get("ac_voltage", 0), "V", "#a855f7"
+        "AC Voltage", features_df["ac_voltage"].values[0], "V", "#a855f7"
     ),
     unsafe_allow_html=True,
 )
 c4.markdown(
     render_sensor_card(
-        "DC Voltage", row_data.get("dc_voltage", 0), "V", "#c084fc"
+        "DC Voltage", features_df["dc_voltage"].values[0], "V", "#c084fc"
     ),
     unsafe_allow_html=True,
 )
 c5.markdown(
     render_sensor_card(
-        "Irradiance", row_data.get("irradiance", 0), "W/m²", "#f59e0b"
+        "Irradiance", irradiance, "W/m²", "#f59e0b"
     ),
     unsafe_allow_html=True,
 )
 c6.markdown(
     render_sensor_card(
-        "Panel Temp", row_data.get("module_temp", 0), "°C", "#f43f5e"
+        "Panel Temp", row_data.get("module_temp", 25.0), "°C", "#f43f5e"
     ),
     unsafe_allow_html=True,
 )
 
 # ==========================================
-# 6. Charts Generation
+# 6. Charts Generation (Updated with Irradiance Zero-Masking)
 # ==========================================
 chart_config = {"displayModeBar": False, "scrollZoom": False}
 col_left, col_right = st.columns(2)
@@ -796,15 +799,21 @@ if df_uploaded is not None and (
     df_chart_full["ParsedTime"] = pd.to_datetime(df_chart_full[time_col])
     df_chart_full = df_chart_full.sort_values("ParsedTime")
 
-    df_chart_full["Actual_Power"] = df_chart_full.get(
-        "active_power",
-        (
-            df_chart_full.get("ac_voltage", 220)
-            * df_chart_full.get("ac_current", 10)
-        )
-        / 1000.0,
+    # استخراج الإشعاعية واعتمادها كمعيار للنهار والليل للتصفير التام
+    df_chart_full["Irradiance_Val"] = df_chart_full.get("irradiance", 0.0)
+    
+    df_chart_full["Actual_Power"] = np.where(
+        df_chart_full["Irradiance_Val"] <= 15.0,
+        0.0,
+        df_chart_full.get("active_power", (df_chart_full.get("ac_voltage", 220) * df_chart_full.get("ac_current", 10)) / 1000.0)
     )
-    df_chart_full["Expected_Power"] = df_chart_full["Actual_Power"] * 1.05
+
+    raw_expected_series = df_chart_full["Actual_Power"] * 1.05
+    df_chart_full["Expected_Power"] = np.where(
+        df_chart_full["Irradiance_Val"] <= 15.0,
+        0.0,
+        raw_expected_series
+    )
 
     if locals().get("play_stream", False):
         df_plot_subset = df_chart_full.iloc[: row_idx + 1]
@@ -869,29 +878,176 @@ if df_uploaded is not None and (
         st.plotly_chart(fig_line, use_container_width=True, config=chart_config)
 
     with col_right:
-        st.markdown("**Irradiance vs Power Production**")
-        fig_scatter = go.Figure()
-        fig_scatter.add_trace(
-            go.Scatter(
-                x=df_chart_full["irradiance"] if "irradiance" in df_chart_full.columns else df_chart_full.get("active_power", 0),
-                y=df_chart_full["Actual_Power"],
-                mode="markers",
-                marker=dict(size=6, color=df_chart_full["Actual_Power"], colorscale="Viridis", showscale=False),
-                name="Readings"
+        st.markdown("**Daily Energy Output vs Power Loss (All Days)**")
+        df_chart_full["Date"] = df_chart_full["ParsedTime"].dt.date
+        df_chart_full["Generated_Energy"] = df_chart_full["Actual_Power"] * (1.0 / 60.0)
+        
+        df_chart_full["Power_Loss_Value"] = np.where(
+            df_chart_full["Irradiance_Val"] <= 15.0,
+            0.0,
+            np.maximum(0.0, df_chart_full["Expected_Power"] - df_chart_full["Actual_Power"])
+        )
+        df_chart_full["Lost_Energy"] = df_chart_full["Power_Loss_Value"] * (1.0 / 60.0)
+
+        daily_grouped = (
+            df_chart_full.groupby("Date")[
+                ["Generated_Energy", "Lost_Energy"]
+            ]
+            .sum()
+            .reset_index()
+        )
+
+        fig_bar = go.Figure()
+        fig_bar.add_trace(
+            go.Bar(
+                x=daily_grouped["Date"].astype(str),
+                y=daily_grouped["Generated_Energy"],
+                name="Generated (kWh)",
+                marker_color="#06b6d4",
+                marker_cornerradius=6,
             )
         )
-        fig_scatter.update_layout(
+        fig_bar.add_trace(
+            go.Bar(
+                x=daily_grouped["Date"].astype(str),
+                y=daily_grouped["Lost_Energy"],
+                name="Lost (kWh)",
+                marker_color="#f43f5e",
+                marker_cornerradius=6,
+            )
+        )
+        fig_bar.update_layout(
+            template=plotly_template,
+            paper_bgcolor=card_bg,
+            plot_bgcolor=card_bg,
+            barmode="group",
+            height=270,
+            margin=dict(l=10, r=10, t=10, b=10),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=11, color=text_color),
+            ),
+            xaxis=dict(
+                showgrid=False,
+                fixedrange=True,
+                tickfont=dict(color=text_color, size=10),
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridcolor=grid_color,
+                title="Energy (kWh)",
+                title_font=dict(color=text_color, size=11),
+                fixedrange=True,
+                tickfont=dict(color=text_color, size=11),
+            ),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig_bar, use_container_width=True, config=chart_config)
+
+    if locals().get("play_stream", False) and row_idx < len(df_uploaded) - 1:
+        t_lib.sleep(0.3)
+        st.rerun()
+
+else:
+    time_series = pd.date_range(
+        start=datetime.now().replace(hour=0, minute=0, second=0),
+        periods=96,
+        freq="15min",
+    )
+    hours_arr = (
+        time_series.hour
+        + time_series.minute / 60.0
+        + time_series.second / 3600.0
+    )
+
+    # Sun-position "shape" of the day (0 -> 1), used only as a SHAPE so the
+    # curve is a smooth arc instead of a flat rectangle. It is NOT the source
+    # of the irradiance value itself — the real irradiance/power readings
+    # (irradiance, active_power, expected_power) still come from the actual
+    # sidebar inputs / model output computed above.
+    daylight_mask = (hours_arr >= 6.0) & (hours_arr <= 18.0)
+    sun_shape = np.where(
+        daylight_mask,
+        np.sin(np.clip((hours_arr - 6.0) * np.pi / 12.0, 0.0, np.pi)),
+        0.0,
+    )
+
+    now_dt = datetime.now()
+    current_hour = now_dt.hour + now_dt.minute / 60.0 + now_dt.second / 3600.0
+    current_shape = (
+        float(np.sin((current_hour - 6.0) * np.pi / 12.0))
+        if 6.0 <= current_hour <= 18.0
+        else 0.0
+    )
+
+    # Hard zero-out: if there is effectively no light right now (real
+    # irradiance <= 15 W/m^2, matching the night/low-sun threshold used for
+    # the diagnostics above) or the simulated clock is outside daylight
+    # hours, the whole curve must be exactly 0 — no leftover shape.
+    if irradiance <= 15.0 or current_shape <= 0.0:
+        actual_curve = np.zeros_like(sun_shape)
+        predicted_curve = np.zeros_like(sun_shape)
+    else:
+        # Scale the shape so it passes through today's REAL readings at the
+        # current time -> the curve genuinely reflects the light level you
+        # set, instead of an arbitrary flat offset.
+        actual_scale = active_power / current_shape
+        predicted_scale = expected_power / current_shape
+        actual_curve = np.maximum(0.0, sun_shape * actual_scale)
+        predicted_curve = np.maximum(0.0, sun_shape * predicted_scale)
+
+    df_chart = pd.DataFrame(
+        {
+            "Time": time_series,
+            "Actual": actual_curve,
+            "Predicted": predicted_curve,
+        }
+    )
+
+    with col_left:
+        st.markdown("**Actual vs Expected Power (Stage 1 Model)**")
+        fig_line = go.Figure()
+        fig_line.add_trace(
+            go.Scatter(
+                x=df_chart["Time"],
+                y=df_chart["Actual"],
+                mode="lines",
+                name="Actual Power",
+                line=dict(color="#3b82f6", width=2.5, shape="spline"),
+            )
+        )
+        fig_line.add_trace(
+            go.Scatter(
+                x=df_chart["Time"],
+                y=df_chart["Predicted"],
+                mode="lines",
+                name="Model Expected Power",
+                line=dict(color="#f97316", width=2, dash="dot", shape="spline"),
+            )
+        )
+        fig_line.update_layout(
             template=plotly_template,
             paper_bgcolor=card_bg,
             plot_bgcolor=card_bg,
             height=270,
             margin=dict(l=10, r=10, t=10, b=10),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=11, color=text_color),
+            ),
             xaxis=dict(
                 showgrid=True,
                 gridcolor=grid_color,
-                title="Irradiance (W/m²)",
-                title_font=dict(color=text_color, size=11),
                 fixedrange=True,
+                tickformat="%b %d\n%H:%M",
                 tickfont=dict(color=text_color, size=10),
             ),
             yaxis=dict(
@@ -901,11 +1057,74 @@ if df_uploaded is not None and (
                 title_font=dict(color=text_color, size=11),
                 fixedrange=True,
                 tickfont=dict(color=text_color, size=11),
+            ),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig_line, use_container_width=True, config=chart_config)
+
+    with col_right:
+        st.markdown("**Daily Energy Output vs Power Loss**")
+        daily_summary = pd.DataFrame(
+            {
+                "Day": [datetime.now().strftime("%a %d/%m")],
+                "Actual": [df_chart["Actual"].sum() * 0.25],
+                "Lost": [
+                    max(
+                        0.0,
+                        (df_chart["Predicted"] - df_chart["Actual"]).sum()
+                        * 0.25,
+                    )
+                ],
+            }
+        )
+
+        fig_bar = go.Figure()
+        fig_bar.add_trace(
+            go.Bar(
+                x=daily_summary["Day"],
+                y=daily_summary["Actual"],
+                name="Generated (kWh)",
+                marker_color="#06b6d4",
+                marker_cornerradius=6,
             )
         )
-        st.plotly_chart(fig_scatter, use_container_width=True, config=chart_config)
-else:
-    with col_left:
-        st.info("Upload a CSV file containing a 'Timestamp' or 'time' column to enable timeline analytics charts.")
-    with col_right:
-        st.info("Additional performance analytics will render once valid time-series data is loaded.")
+        fig_bar.add_trace(
+            go.Bar(
+                x=daily_summary["Day"],
+                y=daily_summary["Lost"],
+                name="Lost (kWh)",
+                marker_color="#f43f5e",
+                marker_cornerradius=6,
+            )
+        )
+        fig_bar.update_layout(
+            template=plotly_template,
+            paper_bgcolor=card_bg,
+            plot_bgcolor=card_bg,
+            barmode="group",
+            height=270,
+            margin=dict(l=10, r=10, t=10, b=10),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=11, color=text_color),
+            ),
+            xaxis=dict(
+                showgrid=False,
+                fixedrange=True,
+                tickfont=dict(color=text_color, size=11),
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridcolor=grid_color,
+                title="Energy (kWh)",
+                title_font=dict(color=text_color, size=11),
+                fixedrange=True,
+                tickfont=dict(color=text_color, size=11),
+            ),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig_bar, use_container_width=True, config=chart_config)
