@@ -126,7 +126,7 @@ def render_sensor_card(title, value, unit, color="#3b82f6"):
 # 2. ML Engine & Models Loading (Blend: CatBoost + LightGBM)
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "saved_models")
+MODELS_DIR = os.path.join(BASE_DIR, "ML_graduate_project/saved_models")
 
 REQUIRED_MODELS = {
     "power_cat": os.path.join(MODELS_DIR, "cat_reg_m1.pkl"),
