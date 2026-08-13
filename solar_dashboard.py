@@ -1,6 +1,8 @@
 from datetime import datetime, time
 import time as t_lib
 import os
+import zipfile
+import requests
 import joblib
 import numpy as np
 import pandas as pd
@@ -978,22 +980,31 @@ else:
 
     now_dt = datetime.now()
     current_hour = now_dt.hour + now_dt.minute / 60.0 + now_dt.second / 3600.0
-    current_shape = (
-        float(np.sin((current_hour - 6.0) * np.pi / 12.0))
-        if 6.0 <= current_hour <= 18.0
-        else 0.0
-    )
 
-    # Hard zero-out: if there is effectively no light right now (real
-    # irradiance <= 15 W/m^2, matching the night/low-sun threshold used for
-    # the diagnostics above) or the simulated clock is outside daylight
-    # hours, the whole curve must be exactly 0 — no leftover shape.
-    if irradiance <= 15.0 or current_shape <= 0.0:
+    # Hard zero-out: this is the ONLY thing that should zero the curve —
+    # the real irradiance value you entered/measured. It must NOT depend
+    # on what the server's wall-clock happens to say.
+    if irradiance <= 15.0:
         actual_curve = np.zeros_like(sun_shape)
         predicted_curve = np.zeros_like(sun_shape)
     else:
+        # There IS light right now (irradiance > 15), so we need a scale
+        # point on the shape to anchor today's real readings to. If the
+        # server's real clock happens to fall within the 6-18 daylight
+        # window, use that hour's position on the curve. Otherwise (e.g.
+        # you're testing with a manual irradiance value while it's
+        # actually night on the server) fall back to the curve's peak
+        # (shape = 1) so the curve still renders instead of collapsing to
+        # zero just because of the clock.
+        if 6.0 <= current_hour <= 18.0:
+            current_shape = max(
+                float(np.sin((current_hour - 6.0) * np.pi / 12.0)), 0.05
+            )
+        else:
+            current_shape = 1.0
+
         # Scale the shape so it passes through today's REAL readings at the
-        # current time -> the curve genuinely reflects the light level you
+        # anchor point -> the curve genuinely reflects the light level you
         # set, instead of an arbitrary flat offset.
         actual_scale = active_power / current_shape
         predicted_scale = expected_power / current_shape
