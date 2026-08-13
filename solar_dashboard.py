@@ -131,14 +131,12 @@ def render_sensor_card(title, value, unit, color="#3b82f6"):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "saved_models")
 
-# Automatic model download from GitHub Release to handle LFS limitations on deployment servers
 RELEASE_ZIP_URL = "https://github.com/abdelrahman-amin-amin/ML_graduate_project/releases/download/v1.0/saved_models.zip"
 
 def ensure_models_exist():
     os.makedirs(MODELS_DIR, exist_ok=True)
     test_model_path = os.path.join(MODELS_DIR, "cat_reg_m1.pkl")
     
-    # If the file doesn't exist or is too small (empty LFS pointer), download it automatically
     if not os.path.exists(test_model_path) or os.path.getsize(test_model_path) < 2000:
         with st.spinner("🔄 Downloading AI models, please wait..."):
             try:
@@ -871,137 +869,29 @@ if df_uploaded is not None and (
         st.plotly_chart(fig_line, use_container_width=True, config=chart_config)
 
     with col_right:
-        st.markdown("**Daily Energy Output vs Power Loss (All Days)**")
-        df_chart_full["Date"] = df_chart_full["ParsedTime"].dt.date
-        df_chart_full["Generated_Energy"] = (
-            df_chart_full["Actual_Power"] * 1.0
-        )
-        df_chart_full["Lost_Energy"] = 0.05 * df_chart_full["Generated_Energy"]
-
-        daily_grouped = (
-            df_chart_full.groupby("Date")[
-                ["Generated_Energy", "Lost_Energy"]
-            ]
-            .sum()
-            .reset_index()
-        )
-
-        fig_bar = go.Figure()
-        fig_bar.add_trace(
-            go.Bar(
-                x=daily_grouped["Date"].astype(str),
-                y=daily_grouped["Generated_Energy"],
-                name="Generated (kWh)",
-                marker_color="#06b6d4",
-                marker_cornerradius=6,
+        st.markdown("**Irradiance vs Power Production**")
+        fig_scatter = go.Figure()
+        fig_scatter.add_trace(
+            go.Scatter(
+                x=df_chart_full["irradiance"] if "irradiance" in df_chart_full.columns else df_chart_full.get("active_power", 0),
+                y=df_chart_full["Actual_Power"],
+                mode="markers",
+                marker=dict(size=6, color=df_chart_full["Actual_Power"], colorscale="Viridis", showscale=False),
+                name="Readings"
             )
         )
-        fig_bar.add_trace(
-            go.Bar(
-                x=daily_grouped["Date"].astype(str),
-                y=daily_grouped["Lost_Energy"],
-                name="Lost (kWh)",
-                marker_color="#f43f5e",
-                marker_cornerradius=6,
-            )
-        )
-        fig_bar.update_layout(
+        fig_scatter.update_layout(
             template=plotly_template,
             paper_bgcolor=card_bg,
             plot_bgcolor=card_bg,
-            barmode="group",
             height=270,
             margin=dict(l=10, r=10, t=10, b=10),
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
-                font=dict(size=11, color=text_color),
-            ),
             xaxis=dict(
-                showgrid=False,
-                fixedrange=True,
-                tickfont=dict(color=text_color, size=10),
-            ),
-            yaxis=dict(
                 showgrid=True,
                 gridcolor=grid_color,
-                title="Energy (kWh)",
+                title="Irradiance (W/m²)",
                 title_font=dict(color=text_color, size=11),
                 fixedrange=True,
-                tickfont=dict(color=text_color, size=11),
-            ),
-            hovermode="x unified",
-        )
-        st.plotly_chart(fig_bar, use_container_width=True, config=chart_config)
-
-    if locals().get("play_stream", False) and row_idx < len(df_uploaded) - 1:
-        t_lib.sleep(0.3)
-        st.rerun()
-
-else:
-    time_series = pd.date_range(
-        start=datetime.now().replace(hour=0, minute=0, second=0),
-        periods=96,
-        freq="15min",
-    )
-    hours_arr = (
-        time_series.hour
-        + time_series.minute / 60.0
-        + time_series.second / 3600.0
-    )
-    base_sig = np.where(
-        (hours_arr >= 6.0) & (hours_arr <= 18.0),
-        active_power * np.sin((hours_arr - 6.0) * np.pi / 12.0),
-        0.0,
-    )
-    df_chart = pd.DataFrame(
-        {"Time": time_series, "Actual": np.maximum(0, base_sig)}
-    )
-    df_chart["Predicted"] = df_chart["Actual"] + power_loss * 0.4
-
-    with col_left:
-        st.markdown("**Actual vs Expected Power (Stage 1 Model)**")
-        fig_line = go.Figure()
-        fig_line.add_trace(
-            go.Scatter(
-                x=df_chart["Time"],
-                y=df_chart["Actual"],
-                mode="lines",
-                name="Actual Power",
-                line=dict(color="#3b82f6", width=2.5, shape="spline"),
-            )
-        )
-        fig_line.add_trace(
-            go.Scatter(
-                x=df_chart["Time"],
-                y=df_chart["Predicted"],
-                mode="lines",
-                name="Model Expected Power",
-                line=dict(color="#f97316", width=2, dash="dot", shape="spline"),
-            )
-        )
-        fig_line.update_layout(
-            template=plotly_template,
-            paper_bgcolor=card_bg,
-            plot_bgcolor=card_bg,
-            height=270,
-            margin=dict(l=10, r=10, t=10, b=10),
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
-                font=dict(size=11, color=text_color),
-            ),
-            xaxis=dict(
-                showgrid=True,
-                gridcolor=grid_color,
-                fixedrange=True,
-                tickformat="%b %d\n%H:%M",
                 tickfont=dict(color=text_color, size=10),
             ),
             yaxis=dict(
@@ -1011,74 +901,11 @@ else:
                 title_font=dict(color=text_color, size=11),
                 fixedrange=True,
                 tickfont=dict(color=text_color, size=11),
-            ),
-            hovermode="x unified",
+            )
         )
-        st.plotly_chart(fig_line, use_container_width=True, config=chart_config)
-
+        st.plotly_chart(fig_scatter, use_container_width=True, config=chart_config)
+else:
+    with col_left:
+        st.info("Upload a CSV file containing a 'Timestamp' or 'time' column to enable timeline analytics charts.")
     with col_right:
-        st.markdown("**Daily Energy Output vs Power Loss**")
-        daily_summary = pd.DataFrame(
-            {
-                "Day": [datetime.now().strftime("%a %d/%m")],
-                "Actual": [df_chart["Actual"].sum() * 0.25],
-                "Lost": [
-                    max(
-                        0.0,
-                        (df_chart["Predicted"] - df_chart["Actual"]).sum()
-                        * 0.25,
-                    )
-                ],
-            }
-        )
-
-        fig_bar = go.Figure()
-        fig_bar.add_trace(
-            go.Bar(
-                x=daily_summary["Day"],
-                y=daily_summary["Actual"],
-                name="Generated (kWh)",
-                marker_color="#06b6d4",
-                marker_cornerradius=6,
-            )
-        )
-        fig_bar.add_trace(
-            go.Bar(
-                x=daily_summary["Day"],
-                y=daily_summary["Lost"],
-                name="Lost (kWh)",
-                marker_color="#f43f5e",
-                marker_cornerradius=6,
-            )
-        )
-        fig_bar.update_layout(
-            template=plotly_template,
-            paper_bgcolor=card_bg,
-            plot_bgcolor=card_bg,
-            barmode="group",
-            height=270,
-            margin=dict(l=10, r=10, t=10, b=10),
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
-                font=dict(size=11, color=text_color),
-            ),
-            xaxis=dict(
-                showgrid=False,
-                fixedrange=True,
-                tickfont=dict(color=text_color, size=11),
-            ),
-            yaxis=dict(
-                showgrid=True,
-                gridcolor=grid_color,
-                title="Energy (kWh)",
-                title_font=dict(color=text_color, size=11),
-                fixedrange=True,
-                tickfont=dict(color=text_color, size=11),
-            ),
-            hovermode="x unified",
-        )
-        st.plotly_chart(fig_bar, use_container_width=True, config=chart_config)
+        st.info("Additional performance analytics will render once valid time-series data is loaded.")
