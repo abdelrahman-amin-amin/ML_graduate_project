@@ -1,16 +1,16 @@
 # ML_graduate_project
 
-# ☀️ Solar Farm Fault Detection
+# Solar Farm Fault Detection
 
 Machine Learning pipeline for predictive maintenance of photovoltaic (PV) solar farms — forecasting expected power output, detecting faults, classifying fault type, and estimating fault severity from inverter telemetry.
 
-## 📌 Project Overview
+## Project Overview
 
 Photovoltaic assets often lose economic return silently: a soiled panel or an overheating inverter keeps producing power, just at gradually declining efficiency. Manual inspection doesn't scale to large device fleets, and static-threshold alarms can't distinguish an expected production drop (night, clouds) from a genuine fault.
 
 This project closes that gap with an **integrated four-model pipeline** that learns the relationship between environmental conditions and electrical output, then uses it to forecast expected power, detect faults, classify the fault type, and estimate severity — moving from reactive/scheduled maintenance to condition-based maintenance.
 
-## 🎯 Objectives
+## Objectives
 
 - Build a regression model to forecast `active_power` from environmental/temporal features
 - Build a binary classifier to detect normal vs. faulted operation
@@ -18,7 +18,7 @@ This project closes that gap with an **integrated four-model pipeline** that lea
 - Build a model to estimate fault severity (none / low / medium / high)
 - Compare **CatBoost** and **LightGBM** on each task, and combine them via ensemble blending
 
-## 📊 Dataset
+## Dataset
 
 - **Source:** `Synthetic-Solar-Farm-Stream-No-Repair.csv` — synthetic telemetry simulating a real solar farm
 - **Size:** 525,600 rows × 25 columns (1 full year, 5-minute resolution, 2025)
@@ -42,7 +42,7 @@ Class imbalance is significant: faults represent 20.4% of readings overall, and 
 - **Blocked time-based split by (device × week)** — 80/20 chronological split per block — instead of a single global time cut, since the monthly fault rate ranges from 0% to 41%
 - Leakage-aware, model-specific feature selection (e.g. excluding device ID from Models 2–4)
 
-## ⚙️ Technologies Used
+## Technologies Used
 
 | Library | Purpose |
 |---|---|
@@ -56,7 +56,7 @@ Class imbalance is significant: faults represent 20.4% of readings overall, and 
 
 **Requirements:** Python 3.11+
 
-## 🤖 Machine Learning Models
+## Machine Learning Models
 
 ```
 Raw Telemetry CSV (525,600 × 25)
@@ -83,7 +83,7 @@ Ensemble Blend → Evaluation & Feature Importance
 - **Class imbalance handling:** balanced class weights (no resampling of raw data)
 - **Evaluation metrics:** MAE / RMSE / R² for regression; Accuracy, Macro F1, Weighted F1, confusion matrix for classification; feature importance as an additional leakage check
 
-## 📈 Results
+## Results
 
 | Model | Best Result |
 |---|---|
@@ -95,7 +95,7 @@ Ensemble Blend → Evaluation & Feature Importance
 Across the three classification tasks, LightGBM was consistently the strongest single model, and the ensemble blend gave a further tangible improvement in fault detection and severity estimation. Feature importance consistently highlighted thermal features (`module_temp`, `ambient_temp`, `inverter_temp`) as top fault indicators, aligning with the physical understanding of soiling and inverter overheating as common fault causes — supporting that the models learned genuine fault signal rather than leakage.
 
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 .
@@ -108,7 +108,7 @@ Across the three classification tasks, LightGBM was consistently the strongest s
 └── README.md
 ```
 
-## 👥 Team Members
+## Team Members
 
 - Abdullah Mohamed Ibrahim
 - Mohamed Ahmed Mohamed
