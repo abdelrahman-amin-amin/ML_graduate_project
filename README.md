@@ -150,7 +150,7 @@ streamlit run streamlit_app.py
 
 ## Important
 
-The training script follows the feature engineering and four model tasks in `Explained_Final_Project.ipynb`.
+The training script follows the feature engineering and four model tasks in `gradution_Project.ipynb`.
 
 The app can be deployed to Streamlit Community Cloud after the model artifacts are prepared. For a lightweight cloud deployment, consider storing the model files with Git LFS or an external model store if their size is large.
 
