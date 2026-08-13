@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import zipfile
+import requests
 
 # ==========================================
 # 1. Page Configuration & Dynamic CSS
@@ -125,8 +127,35 @@ def render_sensor_card(title, value, unit, color="#3b82f6"):
 # ==========================================
 # 2. ML Engine & Models Loading (Blend: CatBoost + LightGBM)
 # ==========================================
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "/mount/src/ML_graduate_project/saved_models")
+MODELS_DIR = os.path.join(BASE_DIR, "saved_models")
+
+# Automatic model download from GitHub Release to handle LFS limitations on deployment servers
+RELEASE_ZIP_URL = "https://github.com/abdelrahman-amin-amin/ML_graduate_project/releases/download/v1.0/saved_models.zip"
+
+def ensure_models_exist():
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    test_model_path = os.path.join(MODELS_DIR, "cat_reg_m1.pkl")
+    
+    # If the file doesn't exist or is too small (empty LFS pointer), download it automatically
+    if not os.path.exists(test_model_path) or os.path.getsize(test_model_path) < 2000:
+        with st.spinner("🔄 Downloading AI models, please wait..."):
+            try:
+                response = requests.get(RELEASE_ZIP_URL)
+                if response.status_code == 200:
+                    zip_path = os.path.join(BASE_DIR, "saved_models.zip")
+                    with open(zip_path, "wb") as f:
+                        f.write(response.content)
+                    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                        zip_ref.extractall(BASE_DIR)
+                    st.success("✅ Models are ready successfully!")
+                else:
+                    st.error("❌ Download failed. Make sure you created a Release in your repository and uploaded the zip file with the correct name.")
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
+
+ensure_models_exist()
 
 REQUIRED_MODELS = {
     "power_cat": os.path.join(MODELS_DIR, "cat_reg_m1.pkl"),
